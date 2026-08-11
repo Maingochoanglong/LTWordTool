@@ -467,22 +467,15 @@ def build_tmpl_paren(inner_content: bytes) -> bytes:
     return tmpl_header + main_slot + left_fence + right_fence + end
 
 
-class TransformResult:
-    """Đếm số cặp ngoặc đã thay trong 1 lượt transform."""
-
-    def __init__(self):
-        """Khởi tạo bộ đếm về 0."""
-        self.replacements = 0
-
-
 def transform_mtef(mtef_bytes: bytes, max_iterations=200):
     """Repeatedly: parse fresh, find ONE literal paren pair anywhere in the
     tree, splice in its tmPAREN replacement, repeat. Re-parsing from scratch
     every time means byte offsets are always correct relative to the current
     buffer -- no manual offset-shifting bookkeeping, so nested/sequential
-    parens are handled correctly by construction."""
+    parens are handled correctly by construction. Trả về (bytes mới, số
+    cặp ngoặc đã thay)."""
     current = bytearray(mtef_bytes)
-    result = TransformResult()
+    n_replacements = 0
 
     for _ in range(max_iterations):
         hdr, top, endpos, parser = parse_mtef(bytes(current))
@@ -497,11 +490,11 @@ def transform_mtef(mtef_bytes: bytes, max_iterations=200):
         inner = bytes(current[open_rec.end:close_rec.start])
         replacement = build_tmpl_paren(inner)
         current[open_rec.start:close_rec.end] = replacement
-        result.replacements += 1
+        n_replacements += 1
     else:
         raise RuntimeError("too many paren-rewrite iterations; aborting for safety")
 
-    return bytes(current), result
+    return bytes(current), n_replacements
 
 
 def transform_equation_native(full_stream: bytes):
@@ -515,16 +508,12 @@ def transform_equation_native(full_stream: bytes):
     header = bytearray(full_stream[:hdr_len])
     mtef = full_stream[hdr_len:]
 
-    new_mtef, result = transform_mtef(mtef)
+    new_mtef, n_replacements = transform_mtef(mtef)
 
-    if result.replacements:
-
-
-
-
+    if n_replacements:
         struct.pack_into('<H', header, 8, len(new_mtef) & 0xFFFF)
 
-    return bytes(header) + new_mtef, result.replacements
+    return bytes(header) + new_mtef, n_replacements
 
 
 FREESECT     = 0xFFFFFFFF
@@ -759,12 +748,12 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
 def process_one_equation(bin_path: Path):
     """Returns (new_bytes_or_None, n_replacements, error_or_None)."""
     try:
-        with olefile.OleFileIO(str(bin_path)) as ole:
-            other_streams = []
-            for n in ['\x01CompObj', '\x01Ole', '\x03ObjInfo']:
-                other_streams.append((n, ole.openstream(n).read()))
-            full = ole.openstream('Equation Native').read()
-            root_clsid_str = ole.root.clsid   # vd "0002CE03-0000-0000-C000-000000000046"
+        ole = olefile.OleFileIO(str(bin_path))
+        other_streams = []
+        for n in ['\x01CompObj', '\x01Ole', '\x03ObjInfo']:
+            other_streams.append((n, ole.openstream(n).read()))
+        full = ole.openstream('Equation Native').read()
+        root_clsid_str = ole.root.clsid   # vd "0002CE03-0000-0000-C000-000000000046"
     except Exception as e:
         return None, 0, f"could not read OLE streams: {e}"
 
