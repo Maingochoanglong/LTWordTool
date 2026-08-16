@@ -83,9 +83,12 @@ def run_combined(source_path, do_replace, pairs, do_mathtype, out_path):
     hàm tương ứng ghi thẳng ra out_path, không qua file tạm (giống hệt
     hành vi cũ khi mỗi công cụ còn chạy độc lập).
 
-    pairs: danh sách (find_path, replacement_path) cho bước thay thế nội
-    dung -- chỉ dùng khi do_replace=True (truyền None hoặc [] khi
-    do_replace=False)."""
+    pairs: danh sách (find_path, replacement_path, backward_stop_text,
+    forward_stop_text) cho bước thay thế nội dung -- chỉ dùng khi
+    do_replace=True (truyền None hoặc [] khi do_replace=False). Hai chuỗi
+    dừng đi RIÊNG theo từng bộ: một chuỗi chặn lan LÙI, chuỗi còn lại chặn
+    lan TIẾN; để trống thì lan tới đầu/cuối đoạn. Xem docstring
+    replace_docx() để biết đầy đủ."""
     replace_counts = None
     mathtype_report = None
     tmp_path = None

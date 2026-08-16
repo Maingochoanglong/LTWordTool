@@ -1,2 +1,4 @@
 **/__pycache__/
 .conda/
+.nuitka-cache/
+dist/
