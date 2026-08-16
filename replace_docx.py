@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
+
 """
 replace_docx.py
 ================
@@ -53,13 +53,11 @@ _FORMAT_RELEVANT_TAGS = {
         'emboss', 'imprint', 'outline', 'shadow',
     )
 }
-DOCUMENT_PART = 'word/document.xml'  # đường dẫn cố định của phần nội dung chính trong mọi file .docx
-
+DOCUMENT_PART = 'word/document.xml'
 
 def w(tag):
     """Tên thẻ kèm namespace Word. vd: w('p') -> '{...}p'."""
     return f'{{{W_URI}}}{tag}'
-
 
 def check_is_real_docx(path):
     """Bắt lỗi sớm, rõ ràng nếu file không phải Word .docx thật (zip OOXML)."""
@@ -71,12 +69,10 @@ def check_is_real_docx(path):
             f"Có thể đây là file text thuần được đặt tên đuôi .docx, hoặc file bị hỏng."
         )
 
-
 def read_document_xml_root(docx_path):
     """Đọc thẳng word/document.xml từ trong file .docx bằng zipfile (không giải nén ra đĩa)."""
     with zipfile.ZipFile(docx_path) as z:
         return etree.fromstring(z.read(DOCUMENT_PART))
-
 
 def paragraph_text(p):
     """Nối toàn bộ chữ (mọi thẻ w:t) trong 1 đoạn văn, bất kể Word có tách
@@ -86,14 +82,12 @@ def paragraph_text(p):
     cả định dạng lẫn tab)."""
     return ''.join(t.text or '' for t in p.findall('.//' + w('t')))
 
-
 def paragraph_is_boilerplate_empty(p):
     """Có phải đoạn trắng cuối file - dấu kết thúc mặc định của Word - hay
     không: không có chữ, và không chứa ảnh/hình vẽ/object nào."""
     if paragraph_text(p).strip():
         return False
     return not any(p.find('.//' + w(tag)) is not None for tag in ('drawing', 'pict', 'object'))
-
 
 def get_content_paragraphs(root):
     """Danh sách đoạn văn 'nội dung thật' trực tiếp trong <w:body>, bỏ đoạn
@@ -102,12 +96,6 @@ def get_content_paragraphs(root):
     if len(paras) > 1 and paragraph_is_boilerplate_empty(paras[-1]):
         paras = paras[:-1]
     return paras
-
-
-# =============================================================================
-# LỚP ATOM: 1 "ký tự" (chữ, tab, hoặc ranh giới đoạn văn) kèm định dạng,
-# đủ thông tin để lúc thay có thể xác định đúng run/đoạn văn liên quan.
-# =============================================================================
 
 class _Atom:
     """1 đơn vị trong chuỗi so khớp: 1 ký tự chữ (kind='t'), 1 tab
@@ -127,7 +115,6 @@ class _Atom:
         self.kind = kind
         self.para = para
 
-
 def _canonical_xml(el):
     """Chuỗi hoá 1 phần tử XML ỔN ĐỊNH bất kể thứ tự thuộc tính/thẻ con --
     để 2 <w:rPr> cùng 1 TẬP thuộc tính định dạng nhưng khai báo khác thứ tự
@@ -138,7 +125,6 @@ def _canonical_xml(el):
         children = tuple(sorted(norm(c) for c in e))
         return (e.tag, attrs, children)
     return repr(norm(el))
-
 
 def _run_format_key(run):
     """Khoá so sánh định dạng liên quan của 1 <w:r>.
@@ -156,7 +142,6 @@ def _run_format_key(run):
             relevant_rpr.remove(child)
     return _canonical_xml(relevant_rpr) if len(relevant_rpr) else None
 
-
 def _paragraph_atoms(p):
     """Chuỗi phẳng các _Atom trong đoạn văn p, ĐÚNG THEO THỨ TỰ xuất hiện.
     CHỈ đọc <w:t> (chữ) và <w:tab/> (tab) bên trong mỗi run (p.iter(w('r')),
@@ -165,8 +150,7 @@ def _paragraph_atoms(p):
     replace_docx())."""
     atoms = []
     for r in p.iter(w('r')):
-        # Chỉ so định dạng run. pPr thuộc cả đoạn văn nên không được phép
-        # ngăn một chuỗi con khớp ở vị trí bất kỳ trong tài liệu.
+
         fmt = _run_format_key(r)
         for child in r:
             if child.tag == w('t'):
@@ -176,7 +160,6 @@ def _paragraph_atoms(p):
             elif child.tag == w('tab'):
                 atoms.append(_Atom('\t', fmt, r, child, 0, 'tab', p))
     return atoms
-
 
 def _document_atoms(paragraphs):
     """Nối atoms của NHIỀU đoạn văn LIÊN TIẾP thành 1 chuỗi phẳng DUY
@@ -190,12 +173,10 @@ def _document_atoms(paragraphs):
     atoms = []
     for i, p in enumerate(paragraphs):
         if i > 0:
-            # Ranh giới đoạn chỉ phải khớp như một lần Enter; pPr không
-            # tham gia vào khoá tìm vì chuỗi cần khớp ở mọi vị trí.
+
             atoms.append(_Atom('\n', None, None, None, 0, 'pbreak', p))
         atoms.extend(_paragraph_atoms(p))
     return atoms
-
 
 def _find_first_atom_match(atoms, pattern_keys):
     """Vị trí (start, end) của chỗ khớp ĐẦU TIÊN mà pattern_keys (list
@@ -206,11 +187,6 @@ def _find_first_atom_match(atoms, pattern_keys):
         if all((atoms[i + k].ch, atoms[i + k].fmt) == pattern_keys[k] for k in range(n)):
             return i, i + n
     return None
-
-
-# =============================================================================
-# DỰNG LẠI RUN/ĐOẠN VĂN khi thay 1 chỗ khớp.
-# =============================================================================
 
 def _build_run_from_pieces(source_run, pieces):
     """Dựng 1 <w:r> MỚI mang định dạng (rPr) của source_run (deep-copy),
@@ -230,7 +206,6 @@ def _build_run_from_pieces(source_run, pieces):
         else:
             etree.SubElement(r, w('tab'))
     return r
-
 
 def _atoms_to_run_pieces(atom_list):
     """Chuyển 1 danh sách _Atom liên tục thành list <w:r> MỚI -- mỗi lần
@@ -256,7 +231,6 @@ def _atoms_to_run_pieces(atom_list):
         runs.append(_build_run_from_pieces(cur_run, cur_pieces))
     return runs
 
-
 def _replace_runs_in_place(para, old_runs, new_runs):
     """Xoá đúng old_runs (list <w:r> hiện có, đúng thứ tự, trong para)
     khỏi para, chèn new_runs vào ĐÚNG vị trí old_runs[0] từng đứng. Nếu
@@ -277,7 +251,6 @@ def _replace_runs_in_place(para, old_runs, new_runs):
         for offset, r in enumerate(new_runs):
             para.insert(insert_at + offset, r)
 
-
 def _set_paragraph_format(para, format_ppr):
     """Đặt <w:pPr> của para thành một deep-copy của format_ppr (hoặc xoá
     hẳn nếu format_ppr là None). pPr luôn là con đầu tiên của <w:p>."""
@@ -287,11 +260,9 @@ def _set_paragraph_format(para, format_ppr):
     if format_ppr is not None:
         para.insert(0, copy.deepcopy(format_ppr))
 
-
 def _copy_paragraph_format_from(para, template_para):
     """Sao chép nguyên định dạng đoạn từ template_para sang para."""
     _set_paragraph_format(para, template_para.find(w('pPr')))
-
 
 def _new_paragraph_from_template(template_para, runs):
     """Dựng 1 <w:p> MỚI mang deep-copy <w:pPr> của đoạn tương ứng trong
@@ -306,7 +277,6 @@ def _new_paragraph_from_template(template_para, runs):
         new_p.append(r)
     return new_p
 
-
 def _has_unmatched_text_in_para(atoms, para, start, end):
     """True nếu para vẫn còn chữ/tab nằm ngoài vùng [start, end). Khi còn
     nội dung nguồn này, pPr của para phải được giữ để không làm thay đổi bố
@@ -315,7 +285,6 @@ def _has_unmatched_text_in_para(atoms, para, start, end):
         atom.para is para and atom.kind != 'pbreak' and not (start <= i < end)
         for i, atom in enumerate(atoms)
     )
-
 
 def _splice_match(atoms, start, end, replacement_paras):
     """Xử lý 1 chỗ khớp [start, end) trong atoms = _document_atoms(...)
@@ -354,9 +323,6 @@ def _splice_match(atoms, start, end, replacement_paras):
         _has_unmatched_text_in_para(atoms, last_para, start, end)
     )
 
-    # Xoá NGUYÊN các đoạn văn nguồn nằm HOÀN TOÀN Ở GIỮA first_para và
-    # last_para TRƯỚC KHI chèn bất kỳ gì mới -- tránh lẫn với đoạn văn
-    # MỚI sắp chèn ngay sau first_para ở bước dưới.
     if not same_para:
         p = first_para.getnext()
         while p is not None and p is not last_para:
@@ -368,28 +334,12 @@ def _splice_match(atoms, start, end, replacement_paras):
     boundary_start_run = atoms[start].run if atoms[start].kind != 'pbreak' else None
     boundary_end_run = atoms[end - 1].run if atoms[end - 1].kind != 'pbreak' else None
 
-    # PREFIX: đích LUÔN là first_para -- ĐÚNG nơi nó đang đứng sẵn, không
-    # bao giờ cần "di chuyển". Chỉ cần tách phần CÒN LẠI của
-    # boundary_start_run (nếu match bắt đầu giữa run đó); mọi run TRƯỚC
-    # boundary_start_run (nếu có) GIỮ NGUYÊN VẸN, không đụng tới.
     prefix_atoms = (
         [atoms[i] for i in range(start) if atoms[i].run is boundary_start_run]
         if boundary_start_run is not None else []
     )
     prefix_runs = _atoms_to_run_pieces(prefix_atoms)
 
-    # SUFFIX: đích là nơi "mảnh cuối cùng" (đoạn cuối sau khi thay) sẽ
-    # nằm. CẦN DI CHUYỂN (lấy TOÀN BỘ phần còn lại của last_para sau chỗ
-    # khớp, không chỉ riêng boundary_end_run) khi đích đó KHÁC last_para
-    # hiện tại:
-    #   - same_para=True, n_repl>=2  -> phải TÁCH đoạn nguồn, mảnh cuối
-    #     là 1 <w:p> MỚI, khác hẳn first_para=last_para hiện tại.
-    #   - same_para=False, n_repl<=1 -> phải GỘP last_para vào first_para,
-    #     mảnh cuối nằm trong first_para, khác last_para hiện tại.
-    # 2 trường hợp còn lại (same_para=True,n_repl<=1 và same_para=False,
-    # n_repl>=2): đích CHÍNH LÀ last_para hiện tại -- không cần di
-    # chuyển, chỉ tách boundary_end_run là đủ (mọi run SAU nó GIỮ NGUYÊN
-    # VẸN tại chỗ, không đụng tới).
     suffix_needs_move = (same_para and n_repl >= 2) or (not same_para and n_repl <= 1)
     if suffix_needs_move:
         suffix_atoms = [atoms[i] for i in range(end, len(atoms)) if atoms[i].para is last_para]
@@ -413,20 +363,12 @@ def _splice_match(atoms, start, end, replacement_paras):
             last_para_touched.append(a.run)
 
     if suffix_needs_move and same_para:
-        # Đích khác last_para NHƯNG nguồn của suffix lại CHÍNH LÀ
-        # first_para (vì same_para) -- mọi run góp suffix_atoms (kể cả
-        # run CHƯA từng bị match đụng tới, vd " sau." nằm sau chỗ khớp
-        # trong CÙNG đoạn) phải được thêm vào danh sách XOÁ khỏi
-        # first_para, vì nội dung của chúng sắp được chèn LẠI (dưới dạng
-        # suffix_runs, đã dựng thành <w:r> MỚI) ở đoạn MỚI tách ra.
+
         seen2 = {id(r) for r in first_para_touched}
         for a in suffix_atoms:
             if id(a.run) not in seen2:
                 seen2.add(id(a.run))
                 first_para_touched.append(a.run)
-    # (suffix_needs_move and not same_para: nguồn của suffix là last_para,
-    # sắp bị xoá NGUYÊN PHẦN TỬ ở nhánh n_repl<=1 bên dưới -- không cần
-    # xoá riêng từng run, xoá cả last_para là đủ, đã tự động dọn theo.)
 
     repl_runs_per_para = [
         [copy.deepcopy(r) for r in rp.iter(w('r'))] for rp in replacement_paras
@@ -443,7 +385,6 @@ def _splice_match(atoms, start, end, replacement_paras):
             last_para.getparent().remove(last_para)
         return first_para, first_repl_run, first_para, last_repl_run
 
-    # file thay thế có TỪ 2 đoạn trở lên.
     _replace_runs_in_place(first_para, first_para_touched, prefix_runs + repl_runs_per_para[0])
     if not first_has_unmatched_text:
         _copy_paragraph_format_from(first_para, replacement_paras[0])
@@ -457,12 +398,7 @@ def _splice_match(atoms, start, end, replacement_paras):
 
     last_runs = repl_runs_per_para[-1] + suffix_runs
     if same_para:
-        # Chỗ khớp nằm trong 1 đoạn nguồn nhưng file thay có nhiều đoạn
-        # hơn -- TÁCH thêm 1 đoạn mới mang pPr của đoạn replacement cuối.
-        # suffix_runs đã được tính theo
-        # TOÀN BỘ phần còn lại của first_para (suffix_needs_move=True ở
-        # trên) và first_para_touched cũng đã được mở rộng để xoá đúng
-        # các run nguồn của nó khỏi first_para rồi.
+
         new_last = _new_paragraph_from_template(replacement_paras[-1], last_runs)
         insert_after.addnext(new_last)
         end_para = new_last
@@ -474,11 +410,6 @@ def _splice_match(atoms, start, end, replacement_paras):
     last_repl_run = repl_runs_per_para[-1][-1] if repl_runs_per_para[-1] else None
     return first_para, first_repl_run, end_para, last_repl_run
 
-
-# =============================================================================
-# ÁP ĐỊNH DẠNG "TỚI KHI GẶP X" sau khi thay xong 1 chỗ khớp.
-# =============================================================================
-
 def _set_run_format(run, format_rpr):
     """Đặt <w:rPr> của run thành 1 bản deep-copy của format_rpr (hoặc XOÁ
     hẳn rPr nếu format_rpr là None) -- LUÔN THAY THẾ (không gộp) rPr cũ."""
@@ -486,8 +417,7 @@ def _set_run_format(run, format_rpr):
     if old_rpr is not None:
         run.remove(old_rpr)
     if format_rpr is not None:
-        run.insert(0, copy.deepcopy(format_rpr))  # rPr luôn phải là con ĐẦU TIÊN
-
+        run.insert(0, copy.deepcopy(format_rpr))
 
 def _apply_format_backward(start_para, first_repl_run, target_format, stop_text):
     """Áp target_format (rPr hoặc None) cho chữ trong start_para, TÍNH
@@ -503,7 +433,7 @@ def _apply_format_backward(start_para, first_repl_run, target_format, stop_text)
         return
     atoms = _paragraph_atoms(start_para)
     positions = [i for i, a in enumerate(atoms) if a.run is first_repl_run]
-    end_idx = positions[0] if positions else len(atoms)  # KHÔNG bao gồm chính first_repl_run
+    end_idx = positions[0] if positions else len(atoms)
 
     if not stop_text:
         start_idx = 0
@@ -520,7 +450,7 @@ def _apply_format_backward(start_para, first_repl_run, target_format, stop_text)
         atoms[i].run is boundary_run for i in range(0, start_idx)
     ):
         _split_run_at_atom(atoms, boundary_run, start_idx)
-        atoms = _paragraph_atoms(start_para)  # cấu trúc vừa đổi -- tính lại
+        atoms = _paragraph_atoms(start_para)
 
     touched_ids = {id(atoms[i].run) for i in range(start_idx, end_idx)}
     if not touched_ids:
@@ -528,7 +458,6 @@ def _apply_format_backward(start_para, first_repl_run, target_format, stop_text)
     for r in start_para.iter(w('r')):
         if id(r) in touched_ids and any(c.tag in (w('t'), w('tab')) for c in r):
             _set_run_format(r, target_format)
-
 
 def _split_run_at_atom(atoms, run, split_atom_idx):
     """Tách VẬT LÝ 1 run thành 2 <w:r> riêng (CÙNG rPr với run gốc) ngay
@@ -542,14 +471,13 @@ def _split_run_at_atom(atoms, run, split_atom_idx):
     before = [i for i in run_indices if i < split_atom_idx]
     after = [i for i in run_indices if i >= split_atom_idx]
     if not before or not after:
-        return  # không thực sự cắt giữa -- khỏi cần tách
+        return
 
     before_pieces = _atoms_to_run_pieces([atoms[i] for i in before])
     after_pieces = _atoms_to_run_pieces([atoms[i] for i in after])
     for r in before_pieces + after_pieces:
         run.addprevious(r)
     run.getparent().remove(run)
-
 
 def _apply_format_forward(end_para, last_repl_run, target_format, stop_text):
     """Áp target_format (rPr hoặc None) cho chữ trong end_para, bắt đầu
@@ -590,7 +518,7 @@ def _apply_format_forward(end_para, last_repl_run, target_format, stop_text):
             atoms[i].run is boundary_run for i in range(start_idx, stop_idx)
         ):
             _split_run_at_atom(atoms, boundary_run, stop_idx)
-            atoms = _paragraph_atoms(end_para)  # cấu trúc vừa đổi -- tính lại
+            atoms = _paragraph_atoms(end_para)
 
     touched_ids = {id(atoms[i].run) for i in range(start_idx, min(stop_idx, len(atoms)))}
     if not touched_ids:
@@ -599,13 +527,7 @@ def _apply_format_forward(end_para, last_repl_run, target_format, stop_text):
         if id(r) in touched_ids and any(c.tag in (w('t'), w('tab')) for c in r):
             _set_run_format(r, target_format)
 
-
-# =============================================================================
-# VÒNG LẶP CHÍNH: tìm & thay HẾT mọi chỗ khớp trong TOÀN BỘ file.
-# =============================================================================
-
-MAX_DOCUMENT_ITERATIONS = 5000  # chặn lặp vô hạn nếu chuỗi thay trùng luôn chuỗi tìm
-
+MAX_DOCUMENT_ITERATIONS = 5000
 
 def _iter_paragraph_groups(container):
     """Sinh lần lượt từng NHÓM (list) các <w:p> LIÊN TIẾP là con trực
@@ -651,7 +573,6 @@ def _iter_paragraph_groups(container):
     if current_group:
         yield current_group
 
-
 def _find_match_in_document(source_root, pattern_keys):
     """Tìm chỗ khớp ĐẦU TIÊN của pattern_keys, xét theo ĐÚNG thứ tự xuất
     hiện trong toàn tài liệu (xem _iter_paragraph_groups()). Trả về
@@ -668,7 +589,6 @@ def _find_match_in_document(source_root, pattern_keys):
             start, end = match
             return atoms, start, end
     return None
-
 
 def _replace_all_matches(
     source_root,
@@ -721,7 +641,6 @@ def _replace_all_matches(
 
     return count
 
-
 def _apply_one_pair(
     source_root, find_path, replacement_path, backward_stop_text, forward_stop_text
 ):
@@ -752,7 +671,6 @@ def _apply_one_pair(
         forward_stop_text,
     )
 
-
 def _write_docx_with_new_document_xml(source_path, source_root, out_path):
     """Ghi ra out_path: copy nguyên file .docx tại source_path (zip), chỉ
     thay đúng phần word/document.xml bằng nội dung hiện tại của
@@ -764,7 +682,6 @@ def _write_docx_with_new_document_xml(source_path, source_root, out_path):
         for item in zin.infolist():
             data = new_document_xml if item.filename == DOCUMENT_PART else zin.read(item.filename)
             zout.writestr(item, data)
-
 
 def replace_docx(source_path, pairs, out_path):
     """Thay nội dung theo TỪNG BỘ (find_path, replacement_path,
@@ -856,8 +773,7 @@ def replace_docx(source_path, pairs, out_path):
     counts = []
     for i, pair in enumerate(pairs, start=1):
         if len(pair) == 3:
-            # Tương thích với caller cũ: chuỗi dừng duy nhất vẫn áp dụng
-            # cho cả hai chiều, đúng hành vi trước khi tách hai ô UI.
+
             find_path, replacement_path, stop_text = pair
             backward_stop_text = forward_stop_text = stop_text
         elif len(pair) == 4:

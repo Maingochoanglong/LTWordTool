@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
+
 """
 pipeline.py
 ===========
@@ -25,7 +25,6 @@ import tempfile
 from replace_docx import replace_docx
 from fix_mathtype_parens import fix_mathtype_parens_in_docx
 
-
 def _temp_docx_path():
     """Đường dẫn 1 file .docx tạm rỗng, dùng làm nơi ghi kết quả bước
     trung gian khi chạy cả 2 bước. mkstemp tạo sẵn file rỗng (đóng ngay,
@@ -34,7 +33,6 @@ def _temp_docx_path():
     fd, path = tempfile.mkstemp(suffix=".docx", prefix="_buoc_trung_gian_")
     os.close(fd)
     return path
-
 
 class CombinedReport:
     """Kết quả 1 lượt run_combined() -- gồm 0, 1 hoặc 2 bước tuỳ người
@@ -71,7 +69,6 @@ class CombinedReport:
                     lines.append(f"    - bỏ qua {name}: {err}")
         lines.append(f"Đã lưu: {self.out_path}")
         return lines
-
 
 def run_combined(source_path, do_replace, pairs, do_mathtype, out_path):
     """Chạy tuần tự trên source_path, LUÔN theo thứ tự: Thay thế nội dung

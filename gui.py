@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
+
 """
 gui.py
 ======
@@ -42,9 +42,9 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
+    QFormLayout,
     QHBoxLayout,
     QLayout,
-    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -63,11 +63,7 @@ from panel import (
     save_path_pairs,
 )
 from pipeline import run_combined
- 
- 
-_ROW_LABEL_WIDTH = 260
- 
- 
+
 def _indented(*widgets):
     """Gói nhiều widget vào 1 khối thụt lề nhẹ, KHÔNG viền -- dùng cho các
     trường chỉ hiện khi 1 checkbox liên quan được tích (vd danh sách cặp
@@ -79,8 +75,7 @@ def _indented(*widgets):
     for w in widgets:
         box_layout.addWidget(w)
     return box
- 
- 
+
 def _button_row(*buttons):
     """Gói nhiều QPushButton vào 1 hàng ngang, làm 1 widget duy nhất --
     để có thể đưa vào _indented()/file_rows (chỉ nhận widget, không nhận
@@ -91,22 +86,7 @@ def _button_row(*buttons):
     for b in buttons:
         layout.addWidget(b)
     return row
- 
- 
-def _field_row(label_text, widget):
-    """1 hàng: nhãn (bề rộng cố định, khớp FilePickerRow ở trên) + 1
-    widget bất kỳ (vd QLineEdit) -- để layout vẫn thẳng hàng với các
-    FilePickerRow phía trên dù không phải ô chọn file."""
-    row = QWidget()
-    label = QLabel(label_text)
-    label.setFixedWidth(_ROW_LABEL_WIDTH)
-    layout = QHBoxLayout(row)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.addWidget(label)
-    layout.addWidget(widget, 1)
-    return row
- 
- 
+
 class CombinedPanel(RunPanel):
     """Panel duy nhất của app: 1 file gốc + các checkbox thao tác.
     collect_call() luôn trả về đúng 1 lệnh gọi run_combined() (pipeline.py)
@@ -114,77 +94,60 @@ class CombinedPanel(RunPanel):
     có 1 hay nhiều cặp -- CallableWorker dùng chung ở panel.py không cần
     biết bên trong chạy mấy bước/mấy cặp, nó chỉ thấy 1 hàm, 1 kết quả,
     y hệt mọi công cụ khác."""
- 
-    # Group key để save_path_pairs()/load_path_pairs() (panel.py) lưu
-    # danh sách cặp tìm/thay riêng, không lẫn với các settings_key khác
-    # (path_source, path_out...) trong cùng file LTWordTool.ini.
+
     PAIRS_SETTINGS_KEY = "pairs_replace"
-    # Key lưu TRẠNG THÁI TÍCH của 2 checkbox (qua
-    # save_checkbox_state()/load_checkbox_state() ở panel.py) -- để lần
-    # mở app sau giữ nguyên đúng những gì đã để lại lần trước, không phải
-    # tích lại từ đầu. Hai chuỗi dừng lan định dạng đi RIÊNG theo từng
-    # cặp, lưu CHUNG với find_path/replacement_path trong PAIRS_SETTINGS_KEY
-    # (xem _add_pair_item) -- không còn key riêng của nó nữa.
+
     CHK_REPLACE_KEY = "checked_replace"
     CHK_MATHTYPE_KEY = "checked_mathtype"
  
     def __init__(self):
-        self.row_source = FilePickerRow("File gốc:", settings_key="path_source")
+        self.row_source = FilePickerRow("FILE NGUỒN:", settings_key="path_source")
  
         self.chk_replace = QCheckBox("Thay thế nội dung (theo danh sách tìm/thay)")
         self.chk_replace.setChecked(load_checkbox_state(self.CHK_REPLACE_KEY, False))
- 
-        # 4 ô nhập 1 cặp tại 1 thời điểm -- không dùng settings_key/
-        # QSettings riêng ở đây vì đây chỉ là chỗ NHẬP TẠM trước khi bấm
-        # "Thêm vào danh sách"; thứ thật sự cần nhớ giữa các lần mở app là
-        # danh sách cặp bên dưới (xem pair_list, đã gồm cả
-        # chuỗi dừng của từng cặp), không phải nội dung đang gõ dở.
-        self.row_find = FilePickerRow("Nội dung cần tìm:")
-        self.row_replacement = FilePickerRow("Nội dung dùng để thay:")
+
+        self.replace_input_fields = QWidget()
+        replace_form = QFormLayout(self.replace_input_fields)
+        replace_form.setContentsMargins(0, 0, 0, 0)
+        replace_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.row_find = FilePickerRow(
+            "Nội dung cần tìm:", form_layout=replace_form
+        )
+        self.row_replacement = FilePickerRow(
+            "Nội dung dùng để thay:", form_layout=replace_form
+        )
         self.edit_backward_stop = QLineEdit()
         self.edit_backward_stop.setPlaceholderText("Trống = lan tới đầu đoạn")
-        self.row_backward_stop = _field_row(
+        replace_form.addRow(
             "Định dạng lan VỀ TRƯỚC tới khi gặp:", self.edit_backward_stop
         )
         self.edit_forward_stop = QLineEdit()
         self.edit_forward_stop.setPlaceholderText("Trống = lan tới cuối đoạn")
-        self.row_forward_stop = _field_row(
+        replace_form.addRow(
             "Định dạng lan VỀ SAU tới khi gặp:", self.edit_forward_stop
         )
  
-        self.btn_add_pair = QPushButton("+ Thêm vào danh sách")
+        self.btn_add_pair = QPushButton("+ Thêm Vào Danh Sách")
         self.btn_add_pair.clicked.connect(self._on_add_pair)
-        self.btn_remove_pair = QPushButton("- Xoá cặp đã chọn")
+        self.btn_remove_pair = QPushButton("- Xóa Cặp Đã Chọn")
         self.btn_remove_pair.clicked.connect(self._on_remove_pair)
- 
-        # Chiều cao CỐ ĐỊNH (không phình theo số cặp đã thêm) -- tự cuộn
-        # nội bộ khi danh sách dài hơn chỗ hiện, giữ cửa sổ chính luôn
-        # gọn dù người dùng thêm bao nhiêu cặp.
+
         self.pair_list = QListWidget()
         self.pair_list.setFixedHeight(90)
         self.pair_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        # Ép màu tô khi CHỌN 1 dòng luôn rõ, không phụ thuộc pair_list có
-        # đang giữ focus hay không -- mặc định Qt (rõ nhất trên style
-        # Windows) làm NHẠT hẳn màu tô khi widget MẤT focus, mà người dùng
-        # mất focus khỏi pair_list đúng vào lúc di chuột sang bấm nút "Xoá
-        # cặp đã chọn" -- tức đúng lúc cần nhìn rõ nhất để biết đang xoá
-        # cặp nào lại là lúc khó thấy nhất nếu không ép màu ở đây.
+
         self.pair_list.setStyleSheet(
             "QListWidget::item:selected { background-color: #3874d6; color: white; }"
         )
-        # Kéo-thả đổi thứ tự NGAY TRONG danh sách -- thứ tự hiển thị chính
-        # là thứ tự sẽ chạy tuần tự (xem replace_docx() trong
-        # replace_docx.py), không cần đánh số thủ công trong nhãn từng
-        # dòng (số thứ tự sẽ lệch ngay khi kéo-thả nếu có).
+
         self.pair_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.pair_list.model().rowsMoved.connect(lambda *_args: self._save_pairs())
  
         for find_path, replacement_path, backward_stop_text, forward_stop_text in load_path_pairs(
             self.PAIRS_SETTINGS_KEY, n_fields=4, missing_value=None
         ):
-            # Cặp cũ chỉ có 1 chuỗi dừng: duy trì đúng hành vi cũ bằng cách
-            # dùng nó cho cả hai chiều. Cặp mới đã lưu fourth="" thì giữ
-            # nguyên chuỗi tiến rỗng đó, không tự điền lại.
+
             if forward_stop_text is None:
                 forward_stop_text = backward_stop_text
             self._add_pair_item(
@@ -192,10 +155,7 @@ class CombinedPanel(RunPanel):
             )
  
         self.replace_fields = _indented(
-            self.row_find,
-            self.row_replacement,
-            self.row_backward_stop,
-            self.row_forward_stop,
+            self.replace_input_fields,
             _button_row(self.btn_add_pair, self.btn_remove_pair),
             self.pair_list,
         )
@@ -204,26 +164,18 @@ class CombinedPanel(RunPanel):
         self.chk_mathtype.setChecked(load_checkbox_state(self.CHK_MATHTYPE_KEY, False))
  
         self.row_out = FilePickerRow(
-            "File kết quả:", save_mode=True, default_name="ket_qua.docx", settings_key="path_out",
+            "FILE KẾT QUẢ:", save_mode=True, default_name="ket_qua.docx", settings_key="path_out",
             placeholder="Bỏ trống = tự đặt tên cạnh file gốc",
             editable=True,
         )
- 
-        # Trạng thái ban đầu: khoá (không ẩn) phần phụ thuộc "Thay thế nội
-        # dung" bằng setEnabled() theo ĐÚNG giá trị vừa nạp ở trên (có thể
-        # đã tích sẵn từ lần trước) -- trường này LUÔN hiện sẵn, chỉ mờ
-        # đi/không thao tác được khi chưa tích, không ẩn hẳn. Đặt trực
-        # tiếp lên widget con (không đụng self) vì self chưa phải QWidget
-        # hợp lệ tới khi super().__init__() chạy bên dưới.
+
         self.replace_fields.setEnabled(self.chk_replace.isChecked())
- 
-        # Nối tín hiệu ở đây an toàn (chỉ ĐĂNG KÝ, chưa GỌI) -- tới lúc
-        # người dùng thật sự tích checkbox thì self đã dựng xong từ lâu.
+
         self.chk_replace.toggled.connect(self._on_feature_toggled)
         self.chk_mathtype.toggled.connect(self._on_feature_toggled)
  
         super().__init__(
-            run_label="Thực hiện",
+            run_label="Thực Hiện",
             file_rows=[
                 self.row_source,
                 self.chk_replace, self.replace_fields,
@@ -233,16 +185,9 @@ class CombinedPanel(RunPanel):
             result_row=self.row_out,
             log_height=200,
         )
- 
-        # Đồng bộ chữ trên nút Chạy theo ĐÚNG trạng thái đã nạp ở trên
-        # (có thể đã tích sẵn từ lần chạy trước) -- phải gọi SAU
-        # super().__init__() vì cần self.run_button đã tồn tại. Cũng lưu
-        # lại state qua QSettings (idempotent, vô hại nếu trùng giá trị
-        # vừa nạp) để 2 checkbox luôn đồng bộ 1 chỗ duy nhất.
+
         self._on_feature_toggled()
- 
-    # ---- danh sách cặp tìm/thay -----------------------------------------
- 
+
     def _add_pair_item(
         self, find_path, replacement_path, backward_stop_text, forward_stop_text
     ):
@@ -288,7 +233,7 @@ class CombinedPanel(RunPanel):
             find_path, replacement_path, backward_stop_text, forward_stop_text
         )
         self._save_pairs()
-        # Xoá trắng cả 4 ô để nhập cặp kế tiếp ngay, khỏi phải tự xoá tay.
+
         self.row_find.edit.clear()
         self.row_replacement.edit.clear()
         self.edit_backward_stop.clear()
@@ -300,9 +245,7 @@ class CombinedPanel(RunPanel):
             return self._warn("Vui lòng chọn 1 cặp trong danh sách để xoá.")
         self.pair_list.takeItem(row)
         self._save_pairs()
- 
-    # ---- phần còn lại -----------------------------------------------------
- 
+
     def _on_feature_toggled(self, _checked=None):
         """1 chỗ duy nhất quyết định phần nào BẬT/KHOÁ (setEnabled, KHÔNG
         ẩn) theo 2 checkbox -- gọi lại mỗi khi 1 trong 2 checkbox đổi
@@ -314,20 +257,18 @@ class CombinedPanel(RunPanel):
         save_checkbox_state(self.CHK_REPLACE_KEY, replace_on)
         save_checkbox_state(self.CHK_MATHTYPE_KEY, math_on)
         self.replace_fields.setEnabled(replace_on)
-        # Tên nút chạy đổi theo đúng thao tác đang tích -- 2 công cụ cũ có
-        # tên nút rõ việc ("Thực hiện thay thế"/"Sửa ngoặc MathType"), gộp
-        # lại vẫn muốn giữ độ rõ đó thay vì 1 chữ "Thực hiện" chung chung.
+
         self.run_button.setText(self._run_button_label(replace_on, math_on))
  
     @staticmethod
     def _run_button_label(replace_on, math_on):
         if replace_on and math_on:
-            return "Thực hiện cả 2 bước"
+            return "Thực Hiện Cả 2 Bước"
         if replace_on:
-            return "Thay thế nội dung"
+            return "Thay Thế Nội Dung"
         if math_on:
-            return "Sửa ngoặc MathType"
-        return "Thực hiện"
+            return "Sửa Ngoặc MathType"
+        return "Thực Hiện"
  
     def _warn(self, message):
         """Hiện cảnh báo 'Thiếu thông tin' rồi trả None -- dùng trực tiếp
@@ -363,16 +304,13 @@ class CombinedPanel(RunPanel):
  
     def format_result(self, report):
         return report.summary_lines()
- 
- 
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("LTWordTool - Công cụ xử lý file Word")
         layout = QVBoxLayout(self)
-        # Khung Replace luôn hiện (chỉ bị khoá/mở theo checkbox), nên cửa
-        # sổ không được thu nhỏ tới mức layout ép mất các ô chọn file hoặc
-        # danh sách cặp. Người dùng vẫn có thể phóng to bình thường.
+
         layout.setSizeConstraint(QLayout.SetMinimumSize)
         layout.addWidget(CombinedPanel())
         self.resize(self.sizeHint().expandedTo(QSize(620, 400)))
@@ -387,14 +325,12 @@ class MainWindow(QWidget):
         frame = self.frameGeometry()
         frame.moveCenter(screen.availableGeometry().center())
         self.move(frame.topLeft())
- 
- 
+
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
- 
- 
+
 if __name__ == "__main__":
     main()

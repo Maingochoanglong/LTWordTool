@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
+
 """
 Chuyển ngoặc tròn "cứng" (không tự co giãn) trong công thức MathType của
 1 file .docx thành ngoặc tự co giãn (fence template chuẩn của MathType).
@@ -47,7 +47,6 @@ from pathlib import Path
 
 import olefile
 
-
 class Rec:
     """1 bản ghi (record) MTEF, kèm khoảng byte [start, end) mà nó chiếm
     (end không tính children lồng bên trong), để có thể chèn/thay đúng
@@ -71,10 +70,8 @@ class Rec:
         """Chuỗi mô tả ngắn để debug."""
         return f"<{self.rtype} {self.start}:{self.end} glyph={self.glyph!r}>"
 
-
 class MTEFError(Exception):
     """Lỗi phát sinh khi parse cấu trúc MTEF thất bại."""
-
 
 class Parser:
     """Đọc tuần tự các trường nhị phân trong 1 chuỗi MTEF, trả về vị trí kế tiếp sau mỗi lần đọc."""
@@ -163,7 +160,6 @@ class Parser:
             if idx:
                 p += 1
         return p
-
 
     def parse_record(self, p):
         """Phân giải 1 bản ghi MTEF bắt đầu tại p, trả về (Rec, vị_trí_kế_tiếp).
@@ -255,14 +251,7 @@ class Parser:
                 cols = self.u8(p); p += 1
                 p += (2 * (rows + 1) + 7) // 8
                 p += (2 * (cols + 1) + 7) // 8
-                # Số ô thực tế = cols, KHÔNG PHẢI rows*cols -- đã kiểm chứng thực
-                # nghiệm bằng cách parse thử với nhiều công thức mẫu chứa MATRIX
-                # trong chính tài liệu này (3 tổ hợp rows/cols khác nhau: (2,2),
-                # (3,2), (2,1)) và so khớp offset kết thúc với độ dài buffer thực
-                # tế -- dùng rows*cols luôn dư 1 record (đọc lố qua cuối buffer),
-                # dùng cols khớp chính xác từng byte ở toàn bộ trường hợp. "rows"
-                # vẫn phải đọc để tính đúng kích thước bitmask ở trên, chỉ là
-                # không dùng để tính số ô.
+
                 for i in range(cols):
                     lst, p = self.parse_list(p)
                     rec.children.append((f"cell{i}", lst))
@@ -336,10 +325,6 @@ class Parser:
 
         raise MTEFError(f"Unknown record type {rtype} at byte {start}")
 
-
-
-
-
     def parse_template_body(self, rec, p):
         """A TMPL's subobjects (however many slots/characters its class has) are
         ALL just ONE flat object list, terminated by a single END -- exactly
@@ -361,7 +346,6 @@ class Parser:
                 break
         return items, p
 
-
 def parse_header(data):
     """Đọc phần header đầu MTEF (phiên bản, nền tảng, ứng dụng nguồn...),
     trả về (dict thông tin header, vị trí kế tiếp)."""
@@ -379,7 +363,6 @@ def parse_header(data):
     opts = data[p]; p += 1
     return dict(version=ver, platform=plat, product=prod, prodver=prodver,
                 prodsub=prodsub, appkey=appkey, inline=bool(opts & 1)), p
-
 
 def parse_mtef(mtef_bytes):
     """Top level = zero or more def/pref records, then exactly one PILE or LINE
@@ -410,9 +393,7 @@ def parse_mtef(mtef_bytes):
             break
     return hdr, top, p, parser
 
-
-LITERAL_PAREN_TYPEFACE = 2  # fnFUNCTION: kiểu chữ của ngoặc gõ tay, không tự co giãn
-
+LITERAL_PAREN_TYPEFACE = 2
 
 def collect_lists(rec, out):
     """Duyệt đệ quy, gom mọi danh sách con (children) của rec vào out."""
@@ -420,7 +401,6 @@ def collect_lists(rec, out):
         out.append(sublist)
         for child in sublist:
             collect_lists(child, out)
-
 
 def find_literal_paren_pairs(items):
     """Stack-matches literal '(' / ')' CHAR records within one flat sibling
@@ -436,7 +416,6 @@ def find_literal_paren_pairs(items):
                 pairs.append((stack.pop(), it))
     return pairs
 
-
 def find_first_pair(top_records):
     """Tìm cặp ngoặc '(' ')' cứng đầu tiên trong toàn bộ cây bản ghi top_records."""
     all_lists = [top_records]
@@ -447,7 +426,6 @@ def find_first_pair(top_records):
         if pairs:
             return pairs[0]
     return None
-
 
 def build_tmpl_paren(inner_content: bytes) -> bytes:
     """Dựng bytes của 1 template TMPL/tmPAREN (ngoặc tự co giãn) bọc quanh
@@ -465,7 +443,6 @@ def build_tmpl_paren(inner_content: bytes) -> bytes:
     right_fence = bytes([2, 0x00, 0x96]) + struct.pack('<H', 0x0029)
     end = bytes([0])
     return tmpl_header + main_slot + left_fence + right_fence + end
-
 
 def transform_mtef(mtef_bytes: bytes, max_iterations=200):
     """Repeatedly: parse fresh, find ONE literal paren pair anywhere in the
@@ -496,7 +473,6 @@ def transform_mtef(mtef_bytes: bytes, max_iterations=200):
 
     return bytes(current), n_replacements
 
-
 def transform_equation_native(full_stream: bytes):
     """full_stream = raw stream 'Equation Native' (header nhỏ + MTEF).
     Trả về (new_full_stream, n_replacements). Ném lỗi nếu parse thất bại --
@@ -515,7 +491,6 @@ def transform_equation_native(full_stream: bytes):
 
     return bytes(header) + new_mtef, n_replacements
 
-
 FREESECT     = 0xFFFFFFFF
 ENDOFCHAIN   = 0xFFFFFFFE
 FATSECT      = 0xFFFFFFFD
@@ -526,12 +501,10 @@ SECTOR       = 512
 MINI_SECTOR  = 64
 MINI_CUTOFF  = 4096
 
-
 def _pad(b, boundary, fill=b'\x00'):
     """Đệm thêm byte fill vào cuối b cho đủ bội số của boundary."""
     rem = (-len(b)) % boundary
     return b + fill * rem
-
 
 def _cfb_name_key(name):
     """Khóa so sánh tên đúng theo "Compound File Directory Sorting Order"
@@ -539,7 +512,6 @@ def _cfb_name_key(name):
     từng ký tự không phân biệt hoa/thường. Đây là thứ tự BẮT BUỘC giữa các
     anh/em (sibling) trong cây thư mục CFB -- xem ghi chú trong build_cfb()."""
     return (len(name), name.upper())
-
 
 def build_cfb(streams, root_clsid=b'\x00' * 16):
     """streams: list [(tên, bytes), ...] theo đúng thứ tự cần có.
@@ -554,26 +526,13 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
     phẳng làm con trực tiếp của root storage (không có sub-storage).
     Layout (header, directory entry 128 byte, FAT sentinel...) đối chiếu
     theo đúng cấu trúc MS-CFB đã công bố."""
-    # QUAN TRỌNG: cây thư mục CFB dựng bên dưới là kiểu "chuỗi nối 1 phía"
-    # (mỗi entry chỉ có con phải, con trái luôn NOSTREAM) -- đây CHỈ là 1
-    # cây tìm kiếm nhị phân (BST) hợp lệ nếu streams được sắp tăng dần
-    # đúng theo thứ tự MS-CFB trước khi nối. Trước đây streams bị dùng
-    # nguyên thứ tự truyền vào (CompObj, Ole, ObjInfo, Equation Native) --
-    # SAI thứ tự chuẩn (Ole phải đứng đầu vì tên ngắn hơn). olefile (dùng ở
-    # bước tự kiểm tra round-trip bên dưới) duyệt HẾT cây bất kể thứ tự nên
-    # không phát hiện ra; nhưng Word/OLE32 thật tìm stream bằng cách so tên
-    # rồi rẽ trái/phải như 1 BST thật -- thứ tự sai khiến nó rẽ sai hướng,
-    # kết luận nhầm "không có stream \x01Ole" dù stream vẫn nằm trong file
-    # -- đây chính là lý do double-click / right-click Edit để mở MathType
-    # không còn hoạt động sau khi sửa ngoặc, dù công thức vẫn đọc/hiển thị
-    # đúng nội dung.
+
     streams = sorted(streams, key=lambda item: _cfb_name_key(item[0]))
     names = [n for n, _ in streams]
     datas = [d for _, d in streams]
 
     mini_idx = [i for i, d in enumerate(datas) if len(d) < MINI_CUTOFF]
     big_idx = [i for i, d in enumerate(datas) if len(d) >= MINI_CUTOFF]
-
 
     mini_blob = bytearray()
     mini_start_sector = {}
@@ -586,7 +545,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
         mini_blob += d
         mini_blob = bytearray(_pad(bytes(mini_blob), MINI_SECTOR))
     mini_blob = bytes(mini_blob)
-
 
     regular_sectors = []
 
@@ -610,7 +568,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
         s, _n = add_regular(datas[i])
         big_start_sector[i] = s
 
-
     minifat_vals = []
     for i in mini_idx:
         d = datas[i]
@@ -623,8 +580,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
     minifat_start, minifat_nsec = (
         add_regular(minifat_bytes) if minifat_vals else (ENDOFCHAIN, 0)
     )
-
-
 
     n_streams = len(names)
     dir_count = 1 + n_streams
@@ -645,7 +600,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
             clsid, 0, 0, 0,
             sector_start, size,
         )
-
 
     root_child = 1 if n_streams else NOSTREAM
     entries_bytes.append(pack_entry(
@@ -668,7 +622,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
             sector_start, size,
         ))
 
-
     dir_bytes = b''.join(entries_bytes)
     entries_per_sector = SECTOR // 128
     pad_entries = (-dir_count) % entries_per_sector
@@ -676,11 +629,7 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
     dir_bytes += empty_entry * pad_entries
     dir_start, dir_nsec = add_regular(dir_bytes)
 
-
-
-
     total_data_sectors = len(regular_sectors)
-
 
     fat_nsec = 1
     while True:
@@ -717,7 +666,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
     for k in range(fat_nsec):
         regular_sectors.append(fat_bytes[k * SECTOR:(k + 1) * SECTOR])
 
-
     header = b''
     header += struct.pack('>Q', 0xD0CF11E0A1B11AE1)
     header += b'\x00' * 16
@@ -744,7 +692,6 @@ def build_cfb(streams, root_clsid=b'\x00' * 16):
     body = b''.join(regular_sectors)
     return header + body
 
-
 def process_one_equation(bin_path: Path):
     """Returns (new_bytes_or_None, n_replacements, error_or_None)."""
     try:
@@ -753,7 +700,7 @@ def process_one_equation(bin_path: Path):
         for n in ['\x01CompObj', '\x01Ole', '\x03ObjInfo']:
             other_streams.append((n, ole.openstream(n).read()))
         full = ole.openstream('Equation Native').read()
-        root_clsid_str = ole.root.clsid   # vd "0002CE03-0000-0000-C000-000000000046"
+        root_clsid_str = ole.root.clsid
     except Exception as e:
         return None, 0, f"could not read OLE streams: {e}"
 
@@ -766,9 +713,7 @@ def process_one_equation(bin_path: Path):
         return None, 0, None
 
     try:
-        # bytes_le đúng thứ tự byte-trên-đĩa thật của 1 CLSID Windows (đã đối
-        # chiếu trực tiếp với byte gốc trên đĩa của 1 file chưa đụng tới,
-        # khớp chính xác) -- không phải suy đoán theo spec suông.
+
         root_clsid = uuid.UUID(root_clsid_str).bytes_le if root_clsid_str else b'\x00' * 16
         raw = build_cfb(other_streams + [('Equation Native', new_full)], root_clsid=root_clsid)
         check = olefile.OleFileIO(io.BytesIO(raw))
@@ -783,7 +728,6 @@ def process_one_equation(bin_path: Path):
         return None, 0, f"CFB rebuild failed: {e}"
 
     return raw, n_repl, None
-
 
 class FixReport:
     """Kết quả 1 lượt sửa ngoặc trên 1 file .docx -- dùng chung cho cả CLI
@@ -824,7 +768,6 @@ class FixReport:
         lines.append("")
         lines.append(f"Đã lưu: {self.out_path}")
         return lines
-
 
 def fix_mathtype_parens_in_docx(in_path, out_path):
     """Hàm lõi: sửa toàn bộ ngoặc tròn cứng trong các công thức MathType của
