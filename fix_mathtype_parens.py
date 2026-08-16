@@ -1,8 +1,8 @@
 
 
 """
-Chuyển ngoặc tròn "cứng" (không tự co giãn) trong công thức MathType của
-1 file .docx thành ngoặc tự co giãn (fence template chuẩn của MathType).
+Chuyển ngoặc tự co giãn trong công thức MathType thành ngoặc cứng khi phần
+nội dung bên trong chỉ là chữ, số hoặc phép tính đơn giản.
 
 Module thuần (không có CLI/main() riêng) -- chỉ để gui.py import và gọi
 hàm fix_mathtype_parens_in_docx(in_path, out_path) bên dưới, trả về 1
@@ -17,10 +17,8 @@ là cấu trúc nhị phân MTEF (định dạng riêng của MathType, xem spec
 thức tại docs.wiris.com/.../mathtype-mtef-v5-mathtype-40-and-later) --
 không có thư viện Python/pip nào đọc VÀ ghi lại được định dạng này (đã
 tìm), nên phần parser (lớp Parser) và phần ghi container OLE (build_cfb)
-trong file này là tự viết. Script tìm các cặp ký tự '(' ')' cứng, thay
-bằng cấu trúc TMPL/fence chuẩn -- y hệt mẫu thật lấy từ chính các công
-thức khác trong tài liệu -- rồi ghi lại toàn bộ OLE container (vì kích
-thước byte thay đổi nên không thể chỉ ghi đè).
+trong file này là tự viết. Script chỉ tháo các template ngoặc tự co giãn
+an toàn thành ký tự ngoặc cứng, rồi ghi lại toàn bộ OLE container.
 
 Công thức nào không tự tin đọc đúng 100% cấu trúc nhị phân (đọc lại phải
 khớp chính xác từng byte) sẽ được giữ nguyên, không sửa, và liệt kê
@@ -393,64 +391,82 @@ def parse_mtef(mtef_bytes):
             break
     return hdr, top, p, parser
 
-LITERAL_PAREN_TYPEFACE = 2
+LITERAL_FENCE_TYPEFACE = 2
+EXPANDING_FENCE_TYPEFACE = 22
+FENCE_TEMPLATE_SELECTORS = {1, 3, 9}
+SIMPLE_TEXT_SYMBOLS = frozenset(" +-*/=.,:;_−")
 
-def collect_lists(rec, out):
-    """Duyệt đệ quy, gom mọi danh sách con (children) của rec vào out."""
-    for label, sublist in rec.children:
-        out.append(sublist)
-        for child in sublist:
-            collect_lists(child, out)
 
-def find_literal_paren_pairs(items):
-    """Stack-matches literal '(' / ')' CHAR records within one flat sibling
-    list. Only matches typeface==2 (fnFUNCTION) -- real auto-growing fence
-    characters use typeface 22 (fnEXPAND) and are never mistaken for these."""
-    stack = []
-    pairs = []
-    for it in items:
-        if it.rtype == 2 and it.typeface == LITERAL_PAREN_TYPEFACE:
-            if it.glyph == '(':
-                stack.append(it)
-            elif it.glyph == ')' and stack:
-                pairs.append((stack.pop(), it))
-    return pairs
-
-def find_first_pair(top_records):
-    """Tìm cặp ngoặc '(' ')' cứng đầu tiên trong toàn bộ cây bản ghi top_records."""
-    all_lists = [top_records]
-    for rec in top_records:
-        collect_lists(rec, all_lists)
-    for lst in all_lists:
-        pairs = find_literal_paren_pairs(lst)
-        if pairs:
-            return pairs[0]
+def _child_list(rec, name):
+    for child_name, items in rec.children:
+        if child_name == name:
+            return items
     return None
 
-def build_tmpl_paren(inner_content: bytes) -> bytes:
-    """Dựng bytes của 1 template TMPL/tmPAREN (ngoặc tự co giãn) bọc quanh
-    inner_content, theo đúng layout dò được từ các tmPAREN thật có sẵn trong
-    tài liệu (không đoán theo spec suông):
-      header TMPL: 03 00 01 03 00        (type, opts, selector=1, variation=3, tmplOpts)
-      khe chính:   01 00 <inner_content> 00   (LINE bọc nội dung gốc, giữ nguyên)
-      ngoặc trái:  02 00 96 28 00        (CHAR, typeface=22/fnEXPAND, mã '(')
-      ngoặc phải:  02 00 96 29 00        (CHAR, typeface=22/fnEXPAND, mã ')')
-      kết thúc:    00
-    """
-    tmpl_header = bytes([3, 0x00, 1, 3, 0x00])
-    main_slot = bytes([1, 0x00]) + inner_content + bytes([0])
-    left_fence = bytes([2, 0x00, 0x96]) + struct.pack('<H', 0x0028)
-    right_fence = bytes([2, 0x00, 0x96]) + struct.pack('<H', 0x0029)
-    end = bytes([0])
-    return tmpl_header + main_slot + left_fence + right_fence + end
+
+def _is_simple_text_char(char):
+    return char.isalnum() or char.isspace() or char in SIMPLE_TEXT_SYMBOLS
+
+
+def _simple_line_content(line, source):
+    items = _child_list(line, "content")
+    if not items:
+        return None
+    content = [item for item in items if item.rtype != 0]
+    if not content:
+        return None
+
+    text = []
+    for item in content:
+        if item.rtype == 2:
+            if item.glyph is None or item.children:
+                return None
+            text.append(item.glyph)
+        elif item.rtype not in range(8, 20):
+            return None
+
+    value = "".join(text)
+    if not value or not any(char.isalnum() for char in value):
+        return None
+    if not all(_is_simple_text_char(char) for char in value):
+        return None
+    return source[content[0].start:items[-1].start]
+
+
+def _literal_fence(glyph):
+    return bytes([2, 0, LITERAL_FENCE_TYPEFACE + 128]) + struct.pack("<H", ord(glyph))
+
+
+def _find_first_simple_expanding_fence(top_records, source):
+    records = list(top_records)
+    for rec in records:
+        for _name, children in rec.children:
+            records.extend(children)
+
+        if rec.rtype != 3 or rec.selector not in FENCE_TEMPLATE_SELECTORS:
+            continue
+        subobjects = _child_list(rec, "subobjects")
+        if not subobjects or subobjects[0].rtype != 1:
+            continue
+        fences = [
+            item for item in subobjects[1:]
+            if item.rtype == 2
+            and item.typeface == EXPANDING_FENCE_TYPEFACE
+            and item.glyph in "()[]"
+        ]
+        if len(fences) != 2:
+            continue
+        left, right = fences
+        if left.glyph not in "([" or right.glyph not in ")]":
+            continue
+        inner = _simple_line_content(subobjects[0], source)
+        if inner is not None:
+            return rec, left.glyph, right.glyph, inner
+    return None
 
 def transform_mtef(mtef_bytes: bytes, max_iterations=200):
-    """Repeatedly: parse fresh, find ONE literal paren pair anywhere in the
-    tree, splice in its tmPAREN replacement, repeat. Re-parsing from scratch
-    every time means byte offsets are always correct relative to the current
-    buffer -- no manual offset-shifting bookkeeping, so nested/sequential
-    parens are handled correctly by construction. Trả về (bytes mới, số
-    cặp ngoặc đã thay)."""
+    """Chuyển các fence tự co giãn bao quanh văn bản/số đơn giản về ngoặc
+    cứng. Các template có cấu trúc toán học được giữ nguyên."""
     current = bytearray(mtef_bytes)
     n_replacements = 0
 
@@ -459,14 +475,13 @@ def transform_mtef(mtef_bytes: bytes, max_iterations=200):
         if endpos != len(current):
             raise MTEFError(f"leftover {len(current) - endpos} bytes after parse")
 
-        pair = find_first_pair(top)
-        if pair is None:
+        fence = _find_first_simple_expanding_fence(top, bytes(current))
+        if fence is None:
             break
 
-        open_rec, close_rec = pair
-        inner = bytes(current[open_rec.end:close_rec.start])
-        replacement = build_tmpl_paren(inner)
-        current[open_rec.start:close_rec.end] = replacement
+        template, left, right, inner = fence
+        replacement = _literal_fence(left) + inner + _literal_fence(right)
+        current[template.start:template.end] = replacement
         n_replacements += 1
     else:
         raise RuntimeError("too many paren-rewrite iterations; aborting for safety")
@@ -770,8 +785,8 @@ class FixReport:
         return lines
 
 def fix_mathtype_parens_in_docx(in_path, out_path):
-    """Hàm lõi: sửa toàn bộ ngoặc tròn cứng trong các công thức MathType của
-    file .docx tại in_path, ghi kết quả ra out_path, trả về 1 FixReport.
+    """Hàm lõi: sửa các ngoặc tự co giãn phù hợp trong công thức MathType
+    của file .docx tại in_path, ghi kết quả ra out_path, trả về 1 FixReport.
     Dùng thư mục tạm riêng cho mỗi lần gọi (thay vì đường dẫn cố định như
     bản CLI ban đầu) để gọi lại nhiều lần trong 1 tiến trình dài (vd từ
     GUI, người dùng bấm sửa nhiều file liên tiếp) không giẫm chân nhau."""

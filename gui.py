@@ -14,8 +14,8 @@ dòng lệnh, không chia tab, không tách 2 công cụ riêng nữa:
       TUẦN TỰ theo đúng thứ tự trong danh sách (kéo-thả để đổi thứ tự) --
       xem docstring replace_docx() trong replace_docx.py để biết đầy đủ
       nguyên tắc so khớp/thay thế/lan định dạng.
-  [ ] Sửa ngoặc MathType: chuyển ngoặc tròn cứng trong công thức MathType
-      thành ngoặc tự co giãn, chạy thẳng trên file đang có. Xem docstring
+  [ ] Sửa ngoặc MathType: chuyển ngoặc tự co trong công thức MathType thành
+      ngoặc cứng khi nội dung bên trong là văn bản/số đơn giản. Xem docstring
       fix_mathtype_parens_in_docx() trong fix_mathtype_parens.py.
  
 Tích cả 2: chạy TUẦN TỰ theo đúng thứ tự liệt kê ở trên -- xem
@@ -160,7 +160,7 @@ class CombinedPanel(RunPanel):
             self.pair_list,
         )
  
-        self.chk_mathtype = QCheckBox("Sửa ngoặc MathType (ngoặc cứng → tự co giãn)")
+        self.chk_mathtype = QCheckBox("Sửa ngoặc MathType (ngoặc tự co → cứng)")
         self.chk_mathtype.setChecked(load_checkbox_state(self.CHK_MATHTYPE_KEY, False))
  
         self.row_out = FilePickerRow(
