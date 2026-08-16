@@ -14,7 +14,7 @@ nhau (khung Qt chung vs. nghiệp vụ cụ thể của app).
 (Trước đây file này tên tool_tab.py, class ToolTab -- đổi tên vì app đã
 bỏ QTabWidget từ lâu, chữ "tab" không còn phản ánh gì trong UI nữa.)
  
-8 thứ export ra:
+9 thứ export ra:
  
   FilePickerRow        - 1 hàng chọn file, tự nhớ đường dẫn qua QSettings.
   save_path_pairs/
@@ -53,6 +53,9 @@ bỏ QTabWidget từ lâu, chữ "tab" không còn phản ánh gì trong UI nữ
                             format_result(x) - kết quả func trả về ->
                                                list dòng text để ghi log
                           Xem gui.py (CombinedPanel) để có ví dụ.
+  clear_app_cache       - xoá hẳn file .ini cấu hình trên đĩa (mọi đường
+                          dẫn/checkbox/cặp đã nhớ) -- dùng cho nút "XÓA
+                          CACHE" ở gui.py.
  
 Không phụ thuộc replace_docx.py hay fix_mathtype_parens.py -- file này
 không biết và không cần biết app đang xử lý docx/MTEF gì, chỉ lo khung UI.
@@ -185,6 +188,18 @@ def load_text(key, default=""):
     default nếu key lạ (chưa từng lưu)."""
     value = _app_settings().value(key, default)
     return value if isinstance(value, str) else default
+
+
+def clear_app_cache():
+    """Xoá HẲN file .ini cấu hình trên đĩa (mọi đường dẫn/checkbox/cặp
+    tìm-thay đã nhớ giữa các lần mở app) -- xoá file vật lý, không chỉ
+    giá trị trong bộ nhớ, để lần mở app kế tiếp coi như chưa từng chạy
+    lần nào. Trả về đường dẫn file đã xoá (dù file có tồn tại hay
+    không), để nơi gọi báo cho người dùng biết đã xoá đúng file nào."""
+    path = _app_settings().fileName()
+    if os.path.exists(path):
+        os.remove(path)
+    return path
  
  
 class FilePickerRow(QWidget):
@@ -207,7 +222,7 @@ class FilePickerRow(QWidget):
         self.settings_key = settings_key
  
         label = QLabel(label_text)
-        # label.setFixedWidth(ROW_LABEL_WIDTH)
+        label.setFixedWidth(ROW_LABEL_WIDTH)
  
         self.edit = QLineEdit()
         self.edit.setReadOnly(not editable)
@@ -220,7 +235,7 @@ class FilePickerRow(QWidget):
  
         # Chữ trên nút phải khớp việc nó THẬT SỰ làm -- save_mode mở hộp
         # thoại LƯU (xem pick_file() bên dưới), không phải hộp mở file.
-        button = QPushButton("Chọn nơi lưu" if save_mode else "Chọn file")
+        button = QPushButton("CHỌN NƠI LƯU" if save_mode else "CHỌN FILE")
         button.clicked.connect(self.pick_file)
  
         layout = QHBoxLayout(self)
@@ -364,7 +379,7 @@ class RunPanel(QWidget):
         self.run_button = QPushButton(run_label)
         self.run_button.clicked.connect(self._on_run_clicked)
  
-        self.open_button = QPushButton("Mở file kết quả")
+        self.open_button = QPushButton("MỞ FILE KẾT QUẢ")
         self.open_button.setEnabled(False)
         self.open_button.clicked.connect(self.open_result)
  

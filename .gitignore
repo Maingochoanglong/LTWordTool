@@ -2,3 +2,5 @@
 .conda/
 .nuitka-cache/
 dist/
+test/
+.vscode/
