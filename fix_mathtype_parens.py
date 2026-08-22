@@ -50,7 +50,7 @@ class Rec:
     (end không tính children lồng bên trong), để có thể chèn/thay đúng
     đoạn byte của 1 cặp ngoặc mà không đụng phần còn lại."""
     __slots__ = ("rtype","start","end","opts","selector","variation","glyph","mtcode",
-                 "typeface","children")
+                 "typeface","embell_type","children")
     def __init__(self, rtype, start):
         """Khởi tạo bản ghi loại rtype, bắt đầu tại byte start."""
         self.rtype = rtype
@@ -62,6 +62,7 @@ class Rec:
         self.glyph = None
         self.mtcode = None
         self.typeface = None
+        self.embell_type = None
         self.children = []
 
     def __repr__(self):
@@ -257,6 +258,7 @@ class Parser:
                 return rec, p
 
             if rtype == 6:
+                rec.embell_type = self.u8(p)
                 p += 1
                 rec.end = p
                 return rec, p
@@ -408,7 +410,31 @@ def _is_simple_text_char(char):
     return char.isalnum() or char.isspace() or char in SIMPLE_TEXT_SYMBOLS
 
 
+def _is_literal_fence_char(item):
+    """True nếu item là 1 CHAR record đã LÀ ngoặc cứng (typeface ==
+    LITERAL_FENCE_TYPEFACE, glyph trong '()[]') -- tức 1 cặp ngoặc lồng
+    bên trong đã được transform_mtef() sửa ở vòng lặp TRƯỚC đó (xử lý
+    trong cùng trước, xem docstring transform_mtef()). Nhận diện theo
+    typeface (nguồn gốc thật của ký tự), KHÔNG theo bản thân ký tự '('/
+    ')'/'['/']' -- để không nhận nhầm ngoặc tự co giãn (typeface
+    EXPANDING_FENCE_TYPEFACE) hay ngoặc gõ tay bình thường của người
+    dùng (typeface Text khác) là "đã chuyển"."""
+    return (
+        item.rtype == 2
+        and item.typeface == LITERAL_FENCE_TYPEFACE
+        and item.glyph in "()[]"
+    )
+
+
 def _simple_line_content(line, source):
+    """Nội dung 1 LINE (rtype 1) có được coi là 'văn bản/số đơn giản' hay
+    không -- CHO PHÉP bên trong đã chứa 1 hay nhiều cặp ngoặc cứng do
+    chính transform_mtef() vừa chuyển ở (các) vòng lặp trước (vd
+    '(2a+3)' đã hoá cứng nằm trong '[x-2(2a+3)]'): những CHAR đó được
+    nhận diện qua _is_literal_fence_char() và bỏ qua kiểm tra
+    SIMPLE_TEXT_SYMBOLS -- nhờ vậy ngoặc BAO NGOÀI 1 ngoặc lồng đã sửa
+    vẫn được sửa tiếp ở vòng lặp kế tiếp, thay vì bị coi là 'phức tạp'
+    chỉ vì có ký tự '('/')' xuất hiện trong nội dung."""
     items = _child_list(line, "content")
     if not items:
         return None
@@ -421,14 +447,14 @@ def _simple_line_content(line, source):
         if item.rtype == 2:
             if item.glyph is None or item.children:
                 return None
-            text.append(item.glyph)
+            text.append((item.glyph, _is_literal_fence_char(item)))
         elif item.rtype not in range(8, 20):
             return None
 
-    value = "".join(text)
+    value = "".join(char for char, _is_fence in text)
     if not value or not any(char.isalnum() for char in value):
         return None
-    if not all(_is_simple_text_char(char) for char in value):
+    if not all(is_fence or _is_simple_text_char(char) for char, is_fence in text):
         return None
     return source[content[0].start:items[-1].start]
 

@@ -3,20 +3,21 @@
 """
 pipeline.py
 ===========
-Nối 2 bước xử lý (replace_docx.py + fix_mathtype_parens.py) chạy TUẦN TỰ
-trên cùng 1 file, thành 1 lượt chạy duy nhất với 1 file kết quả cuối --
-để gui.py có đúng 1 hàm để gọi (run_combined()) dù người dùng tích 1 hay
-cả 2 thao tác, không phải tự lo phối 2 bước lại với nhau trong lớp GUI.
+Nối các bước xử lý (replace_docx.py + fix_mathtype_parens.py) chạy TUẦN
+TỰ trên cùng 1 file, thành 1 lượt chạy duy nhất với 1 file kết quả cuối
+-- để gui.py có đúng 1 hàm để gọi (run_combined()) dù người dùng tích
+bao nhiêu thao tác, không phải tự lo phối các bước lại với nhau trong
+lớp GUI.
 
 Không viết lại xử lý docx/MTEF ở đây -- chỉ gọi lại replace_docx() và
-fix_mathtype_parens_in_docx() của 2 module đó, đúng như gui.py vẫn làm.
-"Thay thế nội dung" nhận NHIỀU cặp (tìm, thay) chạy tuần tự (xem
+fix_mathtype_parens_in_docx() của các module đó, đúng như gui.py vẫn
+làm. "Thay thế nội dung" nhận NHIỀU cặp (tìm, thay) chạy tuần tự (xem
 replace_docx() trong replace_docx.py), không chỉ 1 cặp như trước.
 
 Thứ tự LUÔN CỐ ĐỊNH khi chạy cả 2 bước: Thay thế nội dung trước (hết
-toàn bộ danh sách cặp), Sửa ngoặc MathType sau -- để công thức mới chèn
+toàn bộ danh sách cặp), Sửa ngoặc MathType sau (để công thức mới chèn
 từ các cặp thay thế cũng được sửa ngoặc theo, không chỉ công thức có sẵn
-trong file gốc.
+trong file gốc).
 """
 
 import os
@@ -35,9 +36,9 @@ def _temp_docx_path():
     return path
 
 class CombinedReport:
-    """Kết quả 1 lượt run_combined() -- gồm 0, 1 hoặc 2 bước tuỳ người
-    dùng tích chọn gì. replace_counts/mathtype_report = None nghĩa là bước
-    đó KHÔNG được chạy (không tích chọn), không phải chạy nhưng lỗi."""
+    """Kết quả 1 lượt run_combined() -- gồm 0 đến 2 bước tuỳ người dùng
+    tích chọn gì. replace_counts/mathtype_report = None nghĩa là bước đó
+    KHÔNG được chạy (không tích chọn), không phải chạy nhưng lỗi."""
 
     def __init__(self, replace_counts, mathtype_report, out_path):
         self.replace_counts = replace_counts
@@ -73,12 +74,12 @@ class CombinedReport:
 def run_combined(source_path, do_replace, pairs, do_mathtype, out_path):
     """Chạy tuần tự trên source_path, LUÔN theo thứ tự: Thay thế nội dung
     trước (nếu do_replace -- chạy hết toàn bộ danh sách pairs tuần tự,
-    xem replace_docx() trong replace_docx.py) rồi Sửa ngoặc MathType sau
-    (nếu do_mathtype). Ghi kết quả CUỐI CÙNG ra out_path; nếu chạy cả 2
-    bước, dùng 1 file tạm cho kết quả bước 1 rồi xoá đi ngay sau khi xong
-    (kể cả khi bước 2 lỗi) -- không để rác lại. Nếu chỉ tích 1 trong 2,
-    hàm tương ứng ghi thẳng ra out_path, không qua file tạm (giống hệt
-    hành vi cũ khi mỗi công cụ còn chạy độc lập).
+    xem replace_docx() trong replace_docx.py), Sửa ngoặc MathType sau
+    (nếu do_mathtype). Ghi kết quả CUỐI CÙNG ra out_path; bước trung gian
+    (khi chạy cả 2) dùng file tạm rồi xoá ngay sau khi xong (kể cả khi
+    bước sau lỗi) -- không để rác lại. Nếu chỉ tích 1 bước, hàm tương
+    ứng ghi thẳng ra out_path, không qua file tạm (giống hệt hành vi cũ
+    khi mỗi công cụ còn chạy độc lập).
 
     pairs: danh sách (find_path, replacement_path, backward_stop_text,
     forward_stop_text) cho bước thay thế nội dung -- chỉ dùng khi

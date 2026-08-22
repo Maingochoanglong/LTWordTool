@@ -248,10 +248,10 @@ class CombinedPanel(RunPanel):
 
     def _on_feature_toggled(self, _checked=None):
         """1 chỗ duy nhất quyết định phần nào BẬT/KHOÁ (setEnabled, KHÔNG
-        ẩn) theo 2 checkbox -- gọi lại mỗi khi 1 trong 2 checkbox đổi
-        trạng thái (và 1 lần lúc khởi tạo, xem cuối __init__). Vì không
-        còn widget nào bị ẩn/hiện, kích thước layout không đổi theo
-        checkbox -- không cần resize cửa sổ thủ công."""
+        ẩn) theo các checkbox -- gọi lại mỗi khi 1 checkbox đổi trạng
+        thái (và 1 lần lúc khởi tạo, xem cuối __init__). Vì không còn
+        widget nào bị ẩn/hiện, kích thước layout không đổi theo checkbox
+        -- không cần resize cửa sổ thủ công."""
         replace_on = self.chk_replace.isChecked()
         math_on = self.chk_mathtype.isChecked()
         save_checkbox_state(self.CHK_REPLACE_KEY, replace_on)
