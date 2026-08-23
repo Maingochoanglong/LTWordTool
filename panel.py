@@ -1,5 +1,3 @@
-
-
 """
 panel.py
 ========
@@ -38,8 +36,10 @@ bỏ QTabWidget từ lâu, chữ "tab" không còn phản ánh gì trong UI nữ
   friendly_error_text  - dịch vài lỗi HỆ THỐNG hay gặp sang tiếng Việt
                           (xem docstring hàm để biết lỗi nào KHÔNG dịch).
   CallableWorker       - QThread tổng quát: chạy 1 hàm bất kỳ (func(*a,
-                          **kw)) ở luồng riêng, emit finished_ok(kết quả)
-                          hoặc failed(thông báo lỗi đã dịch).
+                          log=...)) ở luồng riêng, emit progress(dòng
+                          log) mỗi khi hàm đó tự báo tiến độ, rồi
+                          finished_ok(kết quả) hoặc failed(thông báo lỗi
+                          đã dịch) khi xong.
   RunPanel             - lớp nền cho 1 panel: tự dựng khung UI (khu vực
                           chọn file, nút Chạy + Mở kết quả, ô nhật ký),
                           tự nối CallableWorker, tự bật/tắt nút, tự bắt
@@ -60,10 +60,13 @@ bỏ QTabWidget từ lâu, chữ "tab" không còn phản ánh gì trong UI nữ
 Không phụ thuộc replace_docx.py hay fix_mathtype_parens.py -- file này
 không biết và không cần biết app đang xử lý docx/MTEF gì, chỉ lo khung UI.
 """
- 
+from __future__ import annotations
+
 import os
+import traceback
 import zipfile
- 
+from collections.abc import Callable
+
 from PySide6.QtCore import QSettings, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -85,7 +88,8 @@ DOCX_FILTER = "Word Document (*.docx)"
 ORG_NAME = "LTWordTool"
 APP_NAME = "LTWordTool"
 
-def _app_settings():
+
+def _app_settings() -> QSettings:
     """QSettings dùng file .ini riêng của ứng dụng thay vì định dạng
     "native" cũ (trên Windows, native = registry). Dùng constructor 4 tham
     số (IniFormat, UserScope, org, app) để Qt tự chọn đường dẫn chuẩn theo
@@ -93,9 +97,11 @@ def _app_settings():
     Windows, ~/.config/LTWordTool/LTWordTool.ini trên Linux."""
     return QSettings(QSettings.IniFormat, QSettings.UserScope, ORG_NAME, APP_NAME)
 
+
 _TUPLE_FIELD_NAMES = ("first", "second", "third", "fourth")
 
-def save_path_pairs(group_key, tuples):
+
+def save_path_pairs(group_key: str, tuples: list[tuple[str, ...]]) -> None:
     """Lưu danh sách các BỘ giá trị (chuỗi bất kỳ -- KHÔNG nhất thiết là
     đường dẫn, vd (find_path, replacement_path, backward_stop_text,
     forward_stop_text)) vào
@@ -117,7 +123,10 @@ def save_path_pairs(group_key, tuples):
             settings.setValue(name, value)
     settings.endArray()
 
-def load_path_pairs(group_key, n_fields=2, missing_value=""):
+
+def load_path_pairs(
+    group_key: str, n_fields: int = 2, missing_value: str | None = ""
+) -> list[tuple[str | None, ...]]:
     """Đọc lại danh sách các bộ giá trị đã lưu bằng save_path_pairs() ở
     lần chạy trước, dưới đúng group_key. n_fields PHẢI khớp đúng số phần
     tử mỗi bộ đã dùng lúc lưu (mặc định 2, dùng (find_path,
@@ -139,14 +148,16 @@ def load_path_pairs(group_key, n_fields=2, missing_value=""):
     settings.endArray()
     return tuples
 
-def save_checkbox_state(key, checked):
+
+def save_checkbox_state(key: str, checked: bool) -> None:
     """Lưu trạng thái tích (bool) của 1 checkbox vào QSettings dưới key,
     để lần mở app sau đọc lại đúng y hệt bằng load_checkbox_state() cùng
     key -- dùng cho checkbox nào MUỐN nhớ trạng thái qua các lần mở app
     (mặc định QCheckBox không tự nhớ gì, luôn bắt đầu bỏ tích)."""
     _app_settings().setValue(key, checked)
 
-def load_checkbox_state(key, default=False):
+
+def load_checkbox_state(key: str, default: bool = False) -> bool:
     """Đọc lại trạng thái tích đã lưu bằng save_checkbox_state() ở lần
     chạy trước. Trả về default nếu key lạ (chưa từng lưu).
  
@@ -161,19 +172,22 @@ def load_checkbox_state(key, default=False):
         return value.strip().lower() in ("1", "true", "yes")
     return bool(value)
 
-def save_text(key, text):
+
+def save_text(key: str, text: str) -> None:
     """Lưu 1 chuỗi bất kỳ vào QSettings dưới key -- dùng cho ô nhập text
     nào MUỐN nhớ giá trị qua các lần mở app (vd ô 'áp dụng định dạng tới
     khi gặp')."""
     _app_settings().setValue(key, text)
 
-def load_text(key, default=""):
+
+def load_text(key: str, default: str = "") -> str:
     """Đọc lại chuỗi đã lưu bằng save_text() ở lần chạy trước. Trả về
     default nếu key lạ (chưa từng lưu)."""
     value = _app_settings().value(key, default)
     return value if isinstance(value, str) else default
 
-def clear_app_cache():
+
+def clear_app_cache() -> str:
     """Xoá HẲN file .ini cấu hình trên đĩa (mọi đường dẫn/checkbox/cặp
     tìm-thay đã nhớ giữa các lần mở app) -- xoá file vật lý, không chỉ
     giá trị trong bộ nhớ, để lần mở app kế tiếp coi như chưa từng chạy
@@ -183,6 +197,7 @@ def clear_app_cache():
     if os.path.exists(path):
         os.remove(path)
     return path
+
 
 class FilePickerRow(QWidget):
     """1 hàng: nhãn + ô đường dẫn + nút chọn file.
@@ -196,9 +211,16 @@ class FilePickerRow(QWidget):
     cần ràng buộc đó (vd file kết quả -- thường CHƯA tồn tại, gõ/sửa tay
     nhanh hơn mở lại hộp thoại chỉ để đổi tên file)."""
  
-    def __init__(self, label_text, save_mode=False, default_name="",
-                 settings_key="", placeholder="Chưa chọn file", editable=False,
-                 form_layout=None):
+    def __init__(
+        self,
+        label_text: str,
+        save_mode: bool = False,
+        default_name: str = "",
+        settings_key: str = "",
+        placeholder: str = "Chưa chọn file",
+        editable: bool = False,
+        form_layout: QFormLayout | None = None,
+    ) -> None:
         super().__init__()
         self.save_mode = save_mode
         self.default_name = default_name
@@ -235,7 +257,9 @@ class FilePickerRow(QWidget):
  
         self.load_setting()
  
-    def pick_file(self):
+    def pick_file(self) -> None:
+        """Mở hộp thoại chọn file (chọn để mở, hoặc chọn nơi lưu nếu
+        save_mode=True), rồi lưu lại đường dẫn nếu người dùng xác nhận."""
         start = self.path() or self.default_name
         if self.save_mode:
             path, _ = QFileDialog.getSaveFileName(self, "Chọn nơi lưu file", start, DOCX_FILTER)
@@ -247,7 +271,7 @@ class FilePickerRow(QWidget):
             self.edit.setText(path)
             self.save_setting()
  
-    def _on_edit_finished(self):
+    def _on_edit_finished(self) -> None:
         """Chỉ được nối tín hiệu khi editable=True (xem __init__). Áp cùng
         quy tắc tự thêm đuôi ".docx" như pick_file() ở trên cho nhất quán,
         dù đường dẫn đến từ gõ tay hay từ hộp thoại, rồi lưu lại qua
@@ -258,20 +282,21 @@ class FilePickerRow(QWidget):
             self.edit.setText(text)
         self.save_setting()
  
-    def path(self):
+    def path(self) -> str:
         return self.edit.text().strip()
  
-    def save_setting(self):
+    def save_setting(self) -> None:
         if self.settings_key:
             _app_settings().setValue(self.settings_key, self.path())
  
-    def load_setting(self):
+    def load_setting(self) -> None:
         if self.settings_key:
             saved = _app_settings().value(self.settings_key, "")
             if saved:
                 self.edit.setText(saved)
 
-def friendly_error_text(exc):
+
+def friendly_error_text(exc: Exception) -> str:
     """Diễn giải vài loại lỗi HỆ THỐNG hay gặp nhất (quyền ghi, file không
     hợp lệ...) sang câu tiếng Việt dễ hiểu cho người dùng cuối, thay vì
     hiện thẳng thông báo kỹ thuật (thường tiếng Anh) của Python/thư viện.
@@ -309,26 +334,42 @@ def friendly_error_text(exc):
  
     return str(exc)
 
+
 class CallableWorker(QThread):
-    """Chạy func(*args) ở luồng riêng để giao diện không bị đơ.
+    """Chạy func(*args, log=...) ở luồng riêng để giao diện không bị đơ.
     Dùng chung cho MỌI công cụ -- không cần viết 1 class QThread riêng
-    cho từng công cụ như trước (ReplaceWorker/MathTypeFixWorker cũ)."""
- 
+    cho từng công cụ như trước (ReplaceWorker/MathTypeFixWorker cũ).
+
+    LUÔN truyền kèm tham số từ khoá log=self.progress.emit cho func --
+    quy ước chung: MỌI func chạy qua worker này phải nhận được tham số
+    log (dùng log=None làm mặc định nếu bản thân không cần dùng tới) --
+    để 1 chỗ duy nhất (đây) lo việc đưa log thời gian thực ra giao diện
+    (nối progress ở RunPanel bên dưới), thay vì mỗi công cụ tự lo lấy.
+    emit() từ luồng nền sang slot ở luồng GUI (self.log_msg) an toàn nhờ
+    Qt tự dùng cơ chế Queued Connection giữa 2 luồng khác nhau."""
+
     finished_ok = Signal(object)
     failed = Signal(str)
+    progress = Signal(str)
  
-    def __init__(self, func, *args):
+    def __init__(self, func: Callable[..., object], *args: object) -> None:
         super().__init__()
         self.func = func
         self.args = args
  
-    def run(self):
+    def run(self) -> None:
         try:
-            result = self.func(*self.args)
+            result = self.func(*self.args, log=self.progress.emit)
         except Exception as e:
+            # In traceback đầy đủ ra stderr (console chạy app) để còn debug
+            # được lỗi gốc -- thông báo hiện lên UI qua friendly_error_text()
+            # đã được rút gọn/dịch, có thể mất chi tiết kỹ thuật (dòng lỗi,
+            # kiểu exception lồng nhau...) cần thiết khi báo lỗi cho tác giả.
+            traceback.print_exc()
             self.failed.emit(friendly_error_text(e))
         else:
             self.finished_ok.emit(result)
+
 
 class RunPanel(QWidget):
     """Khung sườn dùng chung cho 1 panel công cụ: khu vực chọn file (từ
@@ -339,13 +380,19 @@ class RunPanel(QWidget):
     Kế thừa lớp này, cung cấp file_rows/result_row, rồi viết đúng 2 hàm
     collect_call() và format_result() -- xem gui.py (CombinedPanel)."""
  
-    def __init__(self, run_label, file_rows, result_row, log_height=150):
+    def __init__(
+        self,
+        run_label: str,
+        file_rows: list[QWidget],
+        result_row: FilePickerRow,
+        log_height: int = 150,
+    ) -> None:
         """run_label: chữ trên nút chạy.
         file_rows: danh sách FilePickerRow của panel, theo đúng thứ tự hiển thị.
         result_row: FilePickerRow giữ đường dẫn file kết quả (để nút 'Mở
         file kết quả' biết mở gì)."""
         super().__init__()
-        self.worker = None
+        self.worker: CallableWorker | None = None
         self.file_rows = file_rows
         self.result_row = result_row
 
@@ -383,22 +430,22 @@ class RunPanel(QWidget):
         layout.addWidget(self.log)
         layout.addLayout(cache_row)
 
-    def collect_call(self):
+    def collect_call(self) -> tuple[Callable[..., object], tuple[object, ...]] | None:
         """PHẢI override. Kiểm tra input hiện tại, trả về (func, args) để
         chạy nền -- args là tuple. Nếu input thiếu/sai: tự hiện QMessageBox
         cảnh báo (dùng self làm parent) rồi return None để huỷ, KHÔNG được
         raise."""
         raise NotImplementedError
  
-    def format_result(self, result):
+    def format_result(self, result: object) -> list[str]:
         """PHẢI override. result là đúng giá trị mà func ở collect_call()
         trả về khi chạy xong. Trả về list các dòng text để ghi vào nhật ký."""
         raise NotImplementedError
 
-    def log_msg(self, text):
+    def log_msg(self, text: str) -> None:
         self.log.append(text)
  
-    def _on_run_clicked(self):
+    def _on_run_clicked(self) -> None:
         call = self.collect_call()
         if call is None:
             return
@@ -411,20 +458,21 @@ class RunPanel(QWidget):
         self.worker = CallableWorker(func, *args)
         self.worker.finished_ok.connect(self._on_success)
         self.worker.failed.connect(self._on_error)
+        self.worker.progress.connect(self.log_msg)
         self.worker.start()
  
-    def _on_success(self, result):
+    def _on_success(self, result: object) -> None:
         self.run_button.setEnabled(True)
         self.open_button.setEnabled(True)
         for line in self.format_result(result):
             self.log_msg(line)
  
-    def _on_error(self, message):
+    def _on_error(self, message: str) -> None:
         self.run_button.setEnabled(True)
-        self.log_msg(f"✘ Lỗi: {message}")
+        self.log_msg(f"[LỖI] {message}")
         QMessageBox.critical(self, "Lỗi", message)
 
-    def _on_clear_cache_clicked(self):
+    def _on_clear_cache_clicked(self) -> None:
         """Xoá file .ini cấu hình của tài khoản hiện tại trên máy đang chạy.
         Giá trị đang hiện trong cửa sổ được giữ tới khi đóng app; lần mở sau
         sẽ không còn dữ liệu QSettings cũ."""
@@ -440,7 +488,7 @@ class RunPanel(QWidget):
             "Các giá trị đang hiển thị sẽ được xóa sau khi mở lại ứng dụng.",
         )
  
-    def open_result(self):
+    def open_result(self) -> None:
         path = self.result_row.path()
         if path and os.path.isfile(path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))

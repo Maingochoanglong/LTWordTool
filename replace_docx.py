@@ -1,5 +1,3 @@
-
-
 """
 replace_docx.py
 ================
@@ -36,10 +34,12 @@ _iter_paragraph_groups().
 
 Yêu cầu: pip install lxml
 """
+from __future__ import annotations
 
 import copy
 import os
 import zipfile
+from collections.abc import Callable, Iterator
 
 from lxml import etree
 
@@ -55,11 +55,18 @@ _FORMAT_RELEVANT_TAGS = {
 }
 DOCUMENT_PART = 'word/document.xml'
 
-def w(tag):
+# 1 cặp (find_path, replacement_path, backward_stop_text, forward_stop_text);
+# dạng 3 phần tử (không có forward_stop_text riêng) vẫn được chấp nhận ở
+# replace_docx() cho dữ liệu cũ -- xem docstring replace_docx().
+FindReplacePair = tuple[str, str, str] | tuple[str, str, str, str]
+
+
+def w(tag: str) -> str:
     """Tên thẻ kèm namespace Word. vd: w('p') -> '{...}p'."""
     return f'{{{W_URI}}}{tag}'
 
-def check_is_real_docx(path):
+
+def check_is_real_docx(path: str) -> None:
     """Bắt lỗi sớm, rõ ràng nếu file không phải Word .docx thật (zip OOXML)."""
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Không tìm thấy file: {path}")
@@ -69,12 +76,14 @@ def check_is_real_docx(path):
             f"Có thể đây là file text thuần được đặt tên đuôi .docx, hoặc file bị hỏng."
         )
 
-def read_document_xml_root(docx_path):
+
+def read_document_xml_root(docx_path: str) -> etree._Element:
     """Đọc thẳng word/document.xml từ trong file .docx bằng zipfile (không giải nén ra đĩa)."""
     with zipfile.ZipFile(docx_path) as z:
         return etree.fromstring(z.read(DOCUMENT_PART))
 
-def paragraph_text(p):
+
+def paragraph_text(p: etree._Element) -> str:
     """Nối toàn bộ chữ (mọi thẻ w:t) trong 1 đoạn văn, bất kể Word có tách
     thành bao nhiêu run nhỏ bên trong. CHỈ dùng để nhận diện đoạn trắng
     boilerplate (paragraph_is_boilerplate_empty) -- việc so khớp tìm/thay
@@ -82,14 +91,16 @@ def paragraph_text(p):
     cả định dạng lẫn tab)."""
     return ''.join(t.text or '' for t in p.findall('.//' + w('t')))
 
-def paragraph_is_boilerplate_empty(p):
+
+def paragraph_is_boilerplate_empty(p: etree._Element) -> bool:
     """Có phải đoạn trắng cuối file - dấu kết thúc mặc định của Word - hay
     không: không có chữ, và không chứa ảnh/hình vẽ/object nào."""
     if paragraph_text(p).strip():
         return False
     return not any(p.find('.//' + w(tag)) is not None for tag in ('drawing', 'pict', 'object'))
 
-def get_content_paragraphs(root):
+
+def get_content_paragraphs(root: etree._Element) -> list[etree._Element]:
     """Danh sách đoạn văn 'nội dung thật' trực tiếp trong <w:body>, bỏ đoạn
     trắng cuối cùng nếu có (không tính là nội dung)."""
     paras = [c for c in root.find(w('body')) if c.tag == w('p')]
@@ -97,16 +108,39 @@ def get_content_paragraphs(root):
         paras = paras[:-1]
     return paras
 
+
 class _Atom:
     """1 đơn vị trong chuỗi so khớp: 1 ký tự chữ (kind='t'), 1 tab
     (kind='tab'), hoặc 1 ranh giới đoạn văn (kind='pbreak', giữa 2 đoạn
     liên tiếp -- coi như 1 "ký tự" đặc biệt phải khớp CHÍNH XÁC như Enter
     thật). para = đoạn văn <w:p> "gắn với" atom này (để biết atom thuộc
     đoạn nào khi cần tách/ghép); run/el/offset chỉ có ý nghĩa với
-    kind='t'/'tab' (None với 'pbreak')."""
+    kind='t'/'tab' (None với 'pbreak').
+
+    Dùng __slots__ vì đây là đối tượng tạo ra RẤT NHIỀU lần (1 atom / 1
+    ký tự trong toàn bộ tài liệu) -- tránh overhead __dict__ mặc định của
+    Python trên số lượng lớn instance ngắn hạn như vậy."""
+
     __slots__ = ("ch", "fmt", "run", "el", "offset", "kind", "para")
 
-    def __init__(self, ch, fmt, run, el, offset, kind, para):
+    ch: str
+    fmt: str | None
+    run: etree._Element | None
+    el: etree._Element | None
+    offset: int
+    kind: str
+    para: etree._Element
+
+    def __init__(
+        self,
+        ch: str,
+        fmt: str | None,
+        run: etree._Element | None,
+        el: etree._Element | None,
+        offset: int,
+        kind: str,
+        para: etree._Element,
+    ) -> None:
         self.ch = ch
         self.fmt = fmt
         self.run = run
@@ -115,18 +149,20 @@ class _Atom:
         self.kind = kind
         self.para = para
 
-def _canonical_xml(el):
+
+def _canonical_xml(el: etree._Element) -> str:
     """Chuỗi hoá 1 phần tử XML ỔN ĐỊNH bất kể thứ tự thuộc tính/thẻ con --
     để 2 <w:rPr> cùng 1 TẬP thuộc tính định dạng nhưng khai báo khác thứ tự
     vẫn được coi là CÙNG định dạng, trong khi bất kỳ khác biệt THẬT SỰ nào
     vẫn làm 2 rPr bị coi là khác nhau."""
-    def norm(e):
+    def norm(e: etree._Element) -> tuple:
         attrs = tuple(sorted(e.attrib.items()))
         children = tuple(sorted(norm(c) for c in e))
         return (e.tag, attrs, children)
     return repr(norm(el))
 
-def _run_format_key(run):
+
+def _run_format_key(run: etree._Element) -> str | None:
     """Khoá so sánh định dạng liên quan của 1 <w:r>.
 
     Chỉ các tag trong _FORMAT_RELEVANT_TAGS được dùng để so khớp; các tag
@@ -142,13 +178,14 @@ def _run_format_key(run):
             relevant_rpr.remove(child)
     return _canonical_xml(relevant_rpr) if len(relevant_rpr) else None
 
-def _paragraph_atoms(p):
+
+def _paragraph_atoms(p: etree._Element) -> list[_Atom]:
     """Chuỗi phẳng các _Atom trong đoạn văn p, ĐÚNG THEO THỨ TỰ xuất hiện.
     CHỈ đọc <w:t> (chữ) và <w:tab/> (tab) bên trong mỗi run (p.iter(w('r')),
     kể cả run trong w:hyperlink) -- phần tử nội dung KHÁC (vd <w:br/>)
     hiện KHÔNG được tính vào chuỗi ký tự (xem giới hạn trong docstring
     replace_docx())."""
-    atoms = []
+    atoms: list[_Atom] = []
     for r in p.iter(w('r')):
 
         fmt = _run_format_key(r)
@@ -161,7 +198,8 @@ def _paragraph_atoms(p):
                 atoms.append(_Atom('\t', fmt, r, child, 0, 'tab', p))
     return atoms
 
-def _document_atoms(paragraphs):
+
+def _document_atoms(paragraphs: list[etree._Element]) -> list[_Atom]:
     """Nối atoms của NHIỀU đoạn văn LIÊN TIẾP thành 1 chuỗi phẳng DUY
     NHẤT, chèn 1 _Atom kind='pbreak' giữa 2 đoạn kế nhau (đại diện ranh
     giới đoạn văn, như 1 lần Enter) -- nhờ vậy so khớp CHUỖI CON có thể
@@ -170,7 +208,7 @@ def _document_atoms(paragraphs):
     pbreak -- an toàn, không trùng ký tự thật nào (Word không cho phép ký
     tự xuống dòng trần nằm trong <w:t>, luôn dùng <w:br/> riêng, hiện
     không được đọc vào atoms)."""
-    atoms = []
+    atoms: list[_Atom] = []
     for i, p in enumerate(paragraphs):
         if i > 0:
 
@@ -178,7 +216,10 @@ def _document_atoms(paragraphs):
         atoms.extend(_paragraph_atoms(p))
     return atoms
 
-def _find_first_atom_match(atoms, pattern_keys):
+
+def _find_first_atom_match(
+    atoms: list[_Atom], pattern_keys: list[tuple[str, str | None]]
+) -> tuple[int, int] | None:
     """Vị trí (start, end) của chỗ khớp ĐẦU TIÊN mà pattern_keys (list
     (ch, fmt)) khớp CHÍNH XÁC, liên tục, trong atoms. None nếu không có."""
     n = len(pattern_keys)
@@ -188,7 +229,10 @@ def _find_first_atom_match(atoms, pattern_keys):
             return i, i + n
     return None
 
-def _build_run_from_pieces(source_run, pieces):
+
+def _build_run_from_pieces(
+    source_run: etree._Element | None, pieces: list[list[str]]
+) -> etree._Element:
     """Dựng 1 <w:r> MỚI mang định dạng (rPr) của source_run (deep-copy),
     chứa các mảnh pieces (['t', text] hoặc ['tab']) theo đúng thứ tự.
     xml:space="preserve" luôn đặt trên <w:t> mới -- an toàn cho mảnh có
@@ -207,14 +251,16 @@ def _build_run_from_pieces(source_run, pieces):
             etree.SubElement(r, w('tab'))
     return r
 
-def _atoms_to_run_pieces(atom_list):
+
+def _atoms_to_run_pieces(atom_list: list[_Atom]) -> list[etree._Element]:
     """Chuyển 1 danh sách _Atom liên tục thành list <w:r> MỚI -- mỗi lần
     run gốc đổi lại tách thành 1 <w:r> riêng (deep-copy đúng rPr của run
     gốc đó). Viết tổng quát (không giả định chỉ 1 run gốc) dù trong thực
     tế atom_list truyền vào đây luôn chỉ thuộc ĐÚNG 1 run biên (xem
     boundary_start_run/boundary_end_run trong _splice_match)."""
-    runs = []
-    cur_run, cur_pieces = None, []
+    runs: list[etree._Element] = []
+    cur_run: etree._Element | None = None
+    cur_pieces: list[list[str]] = []
     for atom in atom_list:
         if atom.run is not cur_run:
             if cur_pieces:
@@ -231,7 +277,12 @@ def _atoms_to_run_pieces(atom_list):
         runs.append(_build_run_from_pieces(cur_run, cur_pieces))
     return runs
 
-def _replace_runs_in_place(para, old_runs, new_runs):
+
+def _replace_runs_in_place(
+    para: etree._Element,
+    old_runs: list[etree._Element],
+    new_runs: list[etree._Element],
+) -> None:
     """Xoá đúng old_runs (list <w:r> hiện có, đúng thứ tự, trong para)
     khỏi para, chèn new_runs vào ĐÚNG vị trí old_runs[0] từng đứng. Nếu
     old_runs rỗng (para vốn không có run nào bị động tới ở phần này),
@@ -251,7 +302,8 @@ def _replace_runs_in_place(para, old_runs, new_runs):
         for offset, r in enumerate(new_runs):
             para.insert(insert_at + offset, r)
 
-def _set_paragraph_format(para, format_ppr):
+
+def _set_paragraph_format(para: etree._Element, format_ppr: etree._Element | None) -> None:
     """Đặt <w:pPr> của para thành một deep-copy của format_ppr (hoặc xoá
     hẳn nếu format_ppr là None). pPr luôn là con đầu tiên của <w:p>."""
     old_ppr = para.find(w('pPr'))
@@ -260,11 +312,15 @@ def _set_paragraph_format(para, format_ppr):
     if format_ppr is not None:
         para.insert(0, copy.deepcopy(format_ppr))
 
-def _copy_paragraph_format_from(para, template_para):
+
+def _copy_paragraph_format_from(para: etree._Element, template_para: etree._Element) -> None:
     """Sao chép nguyên định dạng đoạn từ template_para sang para."""
     _set_paragraph_format(para, template_para.find(w('pPr')))
 
-def _new_paragraph_from_template(template_para, runs):
+
+def _new_paragraph_from_template(
+    template_para: etree._Element, runs: list[etree._Element]
+) -> etree._Element:
     """Dựng 1 <w:p> MỚI mang deep-copy <w:pPr> của đoạn tương ứng trong
     file thay thế, rồi chèn runs vào đó. Không kế thừa pPr từ đoạn nguồn:
     đoạn mới là một phần của replacement nên phải giữ đúng căn lề/thụt
@@ -277,7 +333,10 @@ def _new_paragraph_from_template(template_para, runs):
         new_p.append(r)
     return new_p
 
-def _has_unmatched_text_in_para(atoms, para, start, end):
+
+def _has_unmatched_text_in_para(
+    atoms: list[_Atom], para: etree._Element, start: int, end: int
+) -> bool:
     """True nếu para vẫn còn chữ/tab nằm ngoài vùng [start, end). Khi còn
     nội dung nguồn này, pPr của para phải được giữ để không làm thay đổi bố
     cục của tiền tố/hậu tố không được thay."""
@@ -286,7 +345,13 @@ def _has_unmatched_text_in_para(atoms, para, start, end):
         for i, atom in enumerate(atoms)
     )
 
-def _splice_match(atoms, start, end, replacement_paras):
+
+def _splice_match(
+    atoms: list[_Atom],
+    start: int,
+    end: int,
+    replacement_paras: list[etree._Element],
+) -> tuple[etree._Element, etree._Element | None, etree._Element, etree._Element | None]:
     """Xử lý 1 chỗ khớp [start, end) trong atoms = _document_atoms(...)
     của TOÀN BỘ đoạn văn nguồn HIỆN TẠI. SỬA TRỰC TIẾP lên cây XML -- có
     thể động tới NHIỀU đoạn văn nếu chỗ khớp vắt qua 1 hay nhiều ranh
@@ -350,7 +415,8 @@ def _splice_match(atoms, start, end, replacement_paras):
         )
     suffix_runs = _atoms_to_run_pieces(suffix_atoms)
 
-    first_para_touched, last_para_touched = [], []
+    first_para_touched: list[etree._Element] = []
+    last_para_touched: list[etree._Element] = []
     seen_ids = set()
     for i in range(start, end):
         a = atoms[i]
@@ -410,7 +476,8 @@ def _splice_match(atoms, start, end, replacement_paras):
     last_repl_run = repl_runs_per_para[-1][-1] if repl_runs_per_para[-1] else None
     return first_para, first_repl_run, end_para, last_repl_run
 
-def _set_run_format(run, format_rpr):
+
+def _set_run_format(run: etree._Element, format_rpr: etree._Element | None) -> None:
     """Đặt <w:rPr> của run thành 1 bản deep-copy của format_rpr (hoặc XOÁ
     hẳn rPr nếu format_rpr là None) -- LUÔN THAY THẾ (không gộp) rPr cũ."""
     old_rpr = run.find(w('rPr'))
@@ -419,7 +486,13 @@ def _set_run_format(run, format_rpr):
     if format_rpr is not None:
         run.insert(0, copy.deepcopy(format_rpr))
 
-def _apply_format_backward(start_para, first_repl_run, target_format, stop_text):
+
+def _apply_format_backward(
+    start_para: etree._Element,
+    first_repl_run: etree._Element | None,
+    target_format: etree._Element | None,
+    stop_text: str,
+) -> None:
     """Áp target_format (rPr hoặc None) cho chữ trong start_para, TÍNH
     LÙI TỪ NGAY TRƯỚC first_repl_run (phần vừa chèn từ file thay thế) VỀ
     ĐẦU ĐOẠN VĂN. Nếu stop_text có giá trị, dừng NGAY SAU lần xuất hiện
@@ -459,7 +532,8 @@ def _apply_format_backward(start_para, first_repl_run, target_format, stop_text)
         if id(r) in touched_ids and any(c.tag in (w('t'), w('tab')) for c in r):
             _set_run_format(r, target_format)
 
-def _split_run_at_atom(atoms, run, split_atom_idx):
+
+def _split_run_at_atom(atoms: list[_Atom], run: etree._Element, split_atom_idx: int) -> None:
     """Tách VẬT LÝ 1 run thành 2 <w:r> riêng (CÙNG rPr với run gốc) ngay
     tại vị trí split_atom_idx (chỉ số trong atoms) -- dùng để áp định
     dạng khác nhau cho 2 nửa (vd điểm dừng format_until_text rơi vào
@@ -479,7 +553,13 @@ def _split_run_at_atom(atoms, run, split_atom_idx):
         run.addprevious(r)
     run.getparent().remove(run)
 
-def _apply_format_forward(end_para, last_repl_run, target_format, stop_text):
+
+def _apply_format_forward(
+    end_para: etree._Element,
+    last_repl_run: etree._Element | None,
+    target_format: etree._Element | None,
+    stop_text: str,
+) -> None:
     """Áp target_format (rPr hoặc None) cho chữ trong end_para, bắt đầu
     NGAY SAU last_repl_run (phần vừa chèn từ file thay thế), đi TỚI
     TRƯỚC, dừng lại khi:
@@ -527,9 +607,11 @@ def _apply_format_forward(end_para, last_repl_run, target_format, stop_text):
         if id(r) in touched_ids and any(c.tag in (w('t'), w('tab')) for c in r):
             _set_run_format(r, target_format)
 
+
 MAX_DOCUMENT_ITERATIONS = 5000
 
-def _iter_paragraph_groups(container):
+
+def _iter_paragraph_groups(container: etree._Element) -> Iterator[list[etree._Element]]:
     """Sinh lần lượt từng NHÓM (list) các <w:p> LIÊN TIẾP là con trực
     tiếp của container (w:body của toàn tài liệu, hoặc 1 ô bảng w:tc) --
     1 nhóm = 1 "luồng" văn bản ĐỘC LẬP, nơi chỗ khớp CÓ THỂ vắt qua ranh
@@ -555,7 +637,7 @@ def _iter_paragraph_groups(container):
     trước 1 bảng, rồi lần lượt từng ô của bảng đó, rồi nhóm văn bản sau
     bảng...) -- dùng làm thứ tự "khớp trước" khi tìm chỗ khớp đầu tiên
     trong toàn tài liệu, xem _find_match_in_document()."""
-    current_group = []
+    current_group: list[etree._Element] = []
     for child in container:
         if child.tag == w('p'):
             current_group.append(child)
@@ -573,7 +655,10 @@ def _iter_paragraph_groups(container):
     if current_group:
         yield current_group
 
-def _find_match_in_document(source_root, pattern_keys):
+
+def _find_match_in_document(
+    source_root: etree._Element, pattern_keys: list[tuple[str, str | None]]
+) -> tuple[list[_Atom], int, int] | None:
     """Tìm chỗ khớp ĐẦU TIÊN của pattern_keys, xét theo ĐÚNG thứ tự xuất
     hiện trong toàn tài liệu (xem _iter_paragraph_groups()). Trả về
     (atoms, start, end) của NHÓM đoạn văn (1 luồng -- thân trang hoặc 1 ô
@@ -590,20 +675,21 @@ def _find_match_in_document(source_root, pattern_keys):
             return atoms, start, end
     return None
 
+
 def _replace_all_matches(
-    source_root,
-    pattern_keys,
-    replacement_paras,
-    backward_stop_text,
-    forward_stop_text,
-):
+    source_root: etree._Element,
+    pattern_keys: list[tuple[str, str | None]],
+    replacement_paras: list[etree._Element],
+    backward_stop_text: str,
+    forward_stop_text: str,
+) -> int:
     """Tìm & thay HẾT mọi chỗ khớp trong TOÀN BỘ nội dung file (thân
     trang LẪN mọi ô bảng, kể cả bảng lồng) -- 1 CƠ CHẾ DUY NHẤT bất kể
     chỗ khớp nằm gọn trong 1 đoạn hay vắt qua nhiều đoạn văn của CÙNG 1
     luồng (xem _iter_paragraph_groups()). Mỗi lần TÍNH LẠI toàn bộ nhóm
     đoạn văn + atoms từ đầu (theo cấu trúc HIỆN TẠI của source_root,
     khỏi phải tự dịch chỉ số thủ công sau mỗi lần sửa -- cùng cách làm
-    với transform_mtef() trong fix_mathtype_parens.py), thay 1 chỗ khớp
+    với transform_mtef() trong mtef_transform.py), thay 1 chỗ khớp
     ĐẦU TIÊN, lặp lại.
 
     CHỈ SAU KHI thay hết mọi chỗ khớp mới áp định dạng LÙI và TIẾN (tới
@@ -616,7 +702,7 @@ def _replace_all_matches(
 
     Trả về số chỗ đã thay."""
     count = 0
-    anchors = []
+    anchors: list[tuple[etree._Element, etree._Element | None, etree._Element, etree._Element | None]] = []
     for _ in range(MAX_DOCUMENT_ITERATIONS):
         found = _find_match_in_document(source_root, pattern_keys)
         if found is None:
@@ -641,9 +727,14 @@ def _replace_all_matches(
 
     return count
 
+
 def _apply_one_pair(
-    source_root, find_path, replacement_path, backward_stop_text, forward_stop_text
-):
+    source_root: etree._Element,
+    find_path: str,
+    replacement_path: str,
+    backward_stop_text: str,
+    forward_stop_text: str,
+) -> int:
     """Lõi xử lý 1 cặp: tìm nội dung find_path trong source_root (lxml
     Element <w:document> đã đọc sẵn trong bộ nhớ), thay bằng nội dung
     replacement_path, SỬA TRỰC TIẾP lên source_root. Không đọc/ghi file
@@ -671,7 +762,10 @@ def _apply_one_pair(
         forward_stop_text,
     )
 
-def _write_docx_with_new_document_xml(source_path, source_root, out_path):
+
+def _write_docx_with_new_document_xml(
+    source_path: str, source_root: etree._Element, out_path: str
+) -> None:
     """Ghi ra out_path: copy nguyên file .docx tại source_path (zip), chỉ
     thay đúng phần word/document.xml bằng nội dung hiện tại của
     source_root (mọi phần khác -- ảnh, style, theme, header/footer...
@@ -683,12 +777,24 @@ def _write_docx_with_new_document_xml(source_path, source_root, out_path):
             data = new_document_xml if item.filename == DOCUMENT_PART else zin.read(item.filename)
             zout.writestr(item, data)
 
-def replace_docx(source_path, pairs, out_path):
+
+def replace_docx(
+    source_path: str,
+    pairs: list[FindReplacePair],
+    out_path: str,
+    log: Callable[[str], None] | None = None,
+) -> list[int]:
     """Thay nội dung theo TỪNG BỘ (find_path, replacement_path,
     backward_stop_text, forward_stop_text) trong pairs, chạy TUẦN TỰ trên source_path (bộ
     sau thấy được kết quả bộ trước đã sửa VÀ đã áp định dạng xong), xuất
     kết quả CUỐI CÙNG ra out_path. Trả về list số chỗ đã thay, đúng theo
     thứ tự pairs.
+
+    log(text): callback ghi 1 dòng log NGAY tại thời điểm xảy ra (đang xử
+    lý cặp thứ mấy/tổng số mấy, kết quả từng cặp -- đã thay bao nhiêu chỗ,
+    hay không khớp chỗ nào...) -- mặc định no-op (không log gì) nếu không
+    truyền, cùng convention với fix_mathtype_parens_in_docx() trong
+    fix_mathtype_parens.py.
 
     Hai chuỗi dừng lan định dạng đi RIÊNG theo từng bộ: backward_stop_text
     chặn chiều lùi và forward_stop_text chặn chiều tiến. Để trống một ô
@@ -764,6 +870,7 @@ def replace_docx(source_path, pairs, out_path):
         trong 1 run bị chỗ khớp cắt ngang giữa chừng hiện KHÔNG được bảo
         toàn khi tách run.
     """
+    log = log or (lambda _msg: None)
     if not pairs:
         raise ValueError("Danh sách cặp tìm/thay đang trống.")
 
@@ -782,23 +889,30 @@ def replace_docx(source_path, pairs, out_path):
             raise ValueError(
                 f"Cặp thứ {i} phải có 3 hoặc 4 giá trị (nhận được {len(pair)})."
             )
+        find_name = os.path.basename(find_path)
+        replacement_name = os.path.basename(replacement_path)
+        log(f'Cặp {i}/{len(pairs)}: đang tìm/thay ("{find_name}" → "{replacement_name}")...')
         try:
-            counts.append(
-                _apply_one_pair(
-                    source_root,
-                    find_path,
-                    replacement_path,
-                    backward_stop_text,
-                    forward_stop_text,
-                )
+            count = _apply_one_pair(
+                source_root,
+                find_path,
+                replacement_path,
+                backward_stop_text,
+                forward_stop_text,
             )
         except Exception as e:
-            find_name = os.path.basename(find_path)
-            replacement_name = os.path.basename(replacement_path)
             raise ValueError(
-                f"Lỗi ở cặp thứ {i}/{len(pairs)} "
-                f"(tìm: {find_name}, thay: {replacement_name}): {e}"
+                f"[LỖI] Cặp {i}/{len(pairs)} (tìm: {find_name}, thay: {replacement_name}).\n"
+                f"      chi tiết: {e}"
             ) from e
+        counts.append(count)
+        if count == 0:
+            log(
+                f"[BỎ QUA] Cặp {i}/{len(pairs)}: không tìm thấy chỗ nào khớp "
+                f"(kiểm tra lại nội dung/định dạng file tìm)."
+            )
+        else:
+            log(f"[OK] Cặp {i}/{len(pairs)}: đã thay {count} chỗ.")
 
     _write_docx_with_new_document_xml(source_path, source_root, out_path)
     return counts
