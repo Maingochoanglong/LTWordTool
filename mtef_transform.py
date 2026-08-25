@@ -174,7 +174,7 @@ def transform_mtef(mtef_bytes: bytes, max_iterations: int = 200) -> tuple[bytes,
         current[template.start:template.end] = replacement
         n_replacements += 1
     else:
-        raise RuntimeError("too many paren-rewrite iterations; aborting for safety")
+        raise RuntimeError("quá nhiều lần lặp sửa ngoặc liên tiếp -- dừng lại để an toàn")
 
     return bytes(current), n_replacements
 
