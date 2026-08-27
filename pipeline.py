@@ -139,7 +139,7 @@ def run_combined(
         current = source_path
 
         if do_replace:
-            log(f"Đang thay thế nội dung ({len(pairs)} cặp)...")
+            log(f"Đang thay thế nội dung ({len(pairs)} cặp)")
             target = _temp_docx_path() if do_mathtype else out_path
             replace_counts = replace_docx(current, pairs, target, log=log)
             log(f"[OK] Đã thay thế xong: {sum(replace_counts)} chỗ.")
@@ -148,12 +148,12 @@ def run_combined(
             current = target
 
         if do_mathtype:
-            log("Đang sửa ngoặc MathType...")
+            log("Đang sửa ngoặc MathType")
             mathtype_report = fix_mathtype_parens_in_docx(current, out_path, log=log)
 
             fixed_names = [name for name, _n_repl in mathtype_report.fixed]
             if fixed_names:
-                log("Đang mở Word để vẽ lại ảnh xem trước cho công thức vừa sửa...")
+                log("Đang mở Word để vẽ lại ảnh xem trước cho công thức vừa sửa")
                 refresh_report = refresh_equation_previews(out_path, fixed_names, log=log)
 
         return CombinedReport(replace_counts, mathtype_report, refresh_report, out_path)

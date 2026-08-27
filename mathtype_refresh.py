@@ -24,12 +24,9 @@ RefreshReport ghi rõ lý do bỏ qua -- vì file .docx kết quả (MTEF đã s
 đúng) đã được ghi ra XONG từ bước trước, refresh chỉ là bước "làm đẹp
 thêm" ảnh xem trước.
 
-LƯU Ý: tính năng tự đóng hộp thoại "License Information" của MathType
-(nhắc dùng thử, thỉnh thoảng bật lên khi Activate()) đã được TẠM BỎ khỏi
-bản này -- sẽ làm lại sau. Nếu hộp thoại đó xuất hiện trong lúc chạy, công
-thức đang xử lý sẽ time-out chờ cửa sổ MathType
-(MATHTYPE_APPEAR_TIMEOUT_SECONDS) và bị đưa vào skipped, cho tới khi người
-dùng tự đóng hộp thoại bằng tay.
+LƯU Ý: nếu cửa sổ MathType không mở ra kịp trong thời gian chờ
+(MATHTYPE_APPEAR_TIMEOUT_SECONDS), công thức đang xử lý sẽ bị bỏ qua
+(đưa vào skipped), không vẽ lại ảnh xem trước.
 """
 from __future__ import annotations
 
@@ -64,8 +61,8 @@ WD_INLINE_SHAPE_OLE = 1
 EQUATION_PROGID_PREFIXES = ("Equation.DSMT", "Equation.3")
 
 MATHTYPE_TITLE_SUBSTRING = "mathtype"
-MATHTYPE_APPEAR_TIMEOUT_SECONDS = 6.0
-MATHTYPE_CLOSE_TIMEOUT_SECONDS = 3.0
+MATHTYPE_APPEAR_TIMEOUT_SECONDS = 2.0
+MATHTYPE_CLOSE_TIMEOUT_SECONDS = 1.0
 POLL_SECONDS = 0.3
 POST_UPDATE_WAIT_SECONDS = 1.0
 POST_CLOSE_WAIT_SECONDS = 0.5
@@ -181,25 +178,25 @@ def _refresh_one_shape(shape: Any, log: Callable[[str], None]) -> tuple[bool, st
     try:
         shape.OLEFormat.Activate()
     except Exception as e:
-        log(f"    -> Không kích hoạt (Activate) được công thức: {e}")
+        log("    -> Không mở được công thức này trong MathType.")
         return False, f"không mở được công thức trong MathType\n      chi tiết: {e}"
 
-    log("    -> Đang chờ cửa sổ MathType mở ra...")
+    log("    -> Đang chờ MathType mở công thức")
     hwnd = _wait_for_mathtype_window()
     if hwnd is None:
-        log("    -> Không thấy cửa sổ MathType xuất hiện, bỏ qua.")
-        return False, "cửa sổ MathType không xuất hiện"
+        log("    -> MathType không mở ra, bỏ qua công thức này.")
+        return False, "MathType không mở ra"
 
-    log("    -> Đang bấm Update (đẩy dữ liệu mới + vẽ lại ảnh xem trước)...")
+    log("    -> Đang vẽ lại ảnh xem trước cho công thức")
     if not _click_menu_by_index(hwnd, MENU_TAB_INDEX, MENU_ITEM_UPDATE):
-        log("    -> Không gửi được lệnh Update.")
-        return False, "không gửi được lệnh Update tới MathType"
+        log("    -> Không vẽ lại được ảnh xem trước.")
+        return False, "không vẽ lại được ảnh xem trước"
     time.sleep(POST_UPDATE_WAIT_SECONDS)
 
-    log("    -> Đang bấm Close and Return...")
+    log("    -> Đang đóng công thức lại")
     if not _click_menu_by_index(hwnd, MENU_TAB_INDEX, MENU_ITEM_CLOSE_RETURN):
-        log("    -> Không gửi được lệnh Close and Return.")
-        return False, "không gửi được lệnh Close and Return tới MathType"
+        log("    -> Không đóng được công thức.")
+        return False, "không đóng được công thức trong MathType"
 
     _wait_for_window_closed(hwnd)
     time.sleep(POST_CLOSE_WAIT_SECONDS)
@@ -265,11 +262,11 @@ def refresh_equation_previews(
         skipped.extend((n, reason) for n in target_names)
         return RefreshReport(total, refreshed, skipped)
 
-    log("Đang đọc thứ tự công thức trong file (document.xml)...")
+    log("Đang kiểm tra thứ tự các công thức trong file")
     try:
         ordered_names = _equation_bin_names_in_document_order(docx_path)
     except Exception as e:
-        reason = f"không đọc được cấu trúc file để xác định thứ tự công thức\n      chi tiết: {e}"
+        reason = f"không đọc được file để xác định thứ tự các công thức\n      chi tiết: {e}"
         log(f"Bỏ qua vẽ lại ảnh xem trước: {reason}")
         skipped.extend((n, reason) for n in target_names)
         return RefreshReport(total, refreshed, skipped)
@@ -277,7 +274,7 @@ def refresh_equation_previews(
     word = None
     doc = None
     try:
-        log("Đang mở Word (chạy ẩn, Visible=False)...")
+        log("Đang mở Word để xử lý ngầm")
         word = win32com.client.DispatchEx("Word.Application")
         word.Visible = False
         word.DisplayAlerts = 0
@@ -289,22 +286,22 @@ def refresh_equation_previews(
         shapes = _equation_shapes_in_order(doc)
         if len(shapes) != len(ordered_names):
             reason = (
-                f"số công thức Word thấy ({len(shapes)}) khác số đọc được từ "
-                f"document.xml ({len(ordered_names)}), không khớp thứ tự an toàn"
+                f"Word đếm được {len(shapes)} công thức nhưng file gốc có "
+                f"{len(ordered_names)} công thức, số lượng không khớp"
             )
-            log(f"CẢNH BÁO: {reason} -- dừng lại, không vẽ lại ảnh nào.")
+            log(f"[LỖI] {reason} -- dừng lại, không vẽ lại ảnh nào để tránh sửa nhầm công thức.")
             skipped.extend((n, reason) for n in target_names)
             return RefreshReport(total, refreshed, skipped)
 
         name_to_shape = dict(zip(ordered_names, shapes))
 
-        log(f"Bắt đầu vẽ lại ảnh cho {total} công thức đã sửa ngoặc...")
+        log(f"Bắt đầu vẽ lại ảnh cho {total} công thức đã sửa ngoặc")
         for i, name in enumerate(sorted(target_names), start=1):
             log(f"[{i}/{total}] Công thức {name}:")
             shape = name_to_shape.get(name)
             if shape is None:
-                log("    -> Không tìm thấy công thức này khi mở bằng Word.")
-                skipped.append((name, "không tìm thấy trong file khi mở bằng Word"))
+                log("    -> Không tìm thấy công thức này trong Word.")
+                skipped.append((name, "không tìm thấy công thức này trong Word"))
                 continue
             ok, reason = _refresh_one_shape(shape, log)
             if ok:
@@ -312,18 +309,18 @@ def refresh_equation_previews(
             else:
                 skipped.append((name, reason))
 
-        log("Đang lưu file...")
+        log("Đang lưu file")
         doc.Save()
         log("Đã lưu.")
 
     except Exception as e:
-        reason = f"gặp lỗi ngoài dự kiến khi điều khiển Word/MathType tự động\n      chi tiết: {e}"
+        reason = f"gặp lỗi ngoài dự kiến khi thao tác với Word/MathType\n      chi tiết: {e}"
         log(f"Dừng lại: {reason}")
         done_names = set(refreshed) | {n for n, _ in skipped}
         skipped.extend((n, reason) for n in target_names if n not in done_names)
 
     finally:
-        log("Đang đóng Word...")
+        log("Đang đóng Word")
         try:
             if doc is not None:
                 doc.Close(SaveChanges=0)

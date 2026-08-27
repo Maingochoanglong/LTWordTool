@@ -891,7 +891,7 @@ def replace_docx(
             )
         find_name = os.path.basename(find_path)
         replacement_name = os.path.basename(replacement_path)
-        log(f'Cặp {i}/{len(pairs)}: đang tìm/thay ("{find_name}" → "{replacement_name}")...')
+        log(f'Cặp {i}/{len(pairs)}: đang tìm "{find_name}", thay bằng "{replacement_name}"')
         try:
             count = _apply_one_pair(
                 source_root,
@@ -902,7 +902,7 @@ def replace_docx(
             )
         except Exception as e:
             raise ValueError(
-                f"[LỖI] Cặp {i}/{len(pairs)} (tìm: {find_name}, thay: {replacement_name}).\n"
+                f"[LỖI] Không xử lý được cặp {i}/{len(pairs)} (tìm: {find_name}, thay: {replacement_name}).\n"
                 f"      chi tiết: {e}"
             ) from e
         counts.append(count)
