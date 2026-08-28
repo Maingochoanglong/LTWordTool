@@ -45,12 +45,12 @@ Built for office workers, teachers, and editors working with Vietnamese-language
 
 ### Option 1 — Download the prebuilt binary (recommended for most users)
 
-Download the latest `.exe` from [Releases](https://github.com/<your-username>/LTWordTool/releases) — no Python needed.
+Download the latest `.exe` from [Releases](https://github.com/Maingochoanglong/LTWordTool/releases/latest) — no Python needed.
 
 ### Option 2 — Run from source
 
 ```bash
-git clone https://github.com/<your-username>/LTWordTool.git
+git clone https://github.com/Maingochoanglong/LTWordTool.git
 cd LTWordTool
 pip install -r requirements.txt
 python gui.py
@@ -96,8 +96,8 @@ Want to use it differently (commercially, embedded in a product, redistributed o
 
 Found a bug, have feedback, or a question about using it?
 
-1. **Check first** in [existing Issues](https://github.com/<your-username>/LTWordTool/issues?q=is%3Aissue) — it may already be reported or answered.
-2. Not there? **Open a [new Issue](https://github.com/<your-username>/LTWordTool/issues/new)**, describing clearly: what you were doing, what you expected, what actually happened (attach a sample `.docx` if convenient, with any sensitive content removed).
+1. **Check first** in [existing Issues](https://github.com/Maingochoanglong/LTWordTool/issues?q=is%3Aissue) — it may already be reported or answered.
+2. Not there? **Open a [new Issue](https://github.com/Maingochoanglong/LTWordTool/issues/new)**, describing clearly: what you were doing, what you expected, what actually happened (attach a sample `.docx` if convenient, with any sensitive content removed).
 
 Please use Issues rather than direct messages — it helps other users with the same problem find an answer, and doesn't rely on a single point of contact.
 

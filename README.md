@@ -45,12 +45,12 @@ Dành cho nhân viên văn phòng, giáo viên, biên tập viên xử lý tài 
 
 ### Cách 1 — Tải bản dựng sẵn (khuyên dùng cho người dùng phổ thông)
 
-Tải file `.exe` mới nhất tại [Releases](https://github.com/<tên-user>/LTWordTool/releases) — không cần cài Python.
+Tải file `.exe` mới nhất tại [Releases](https://github.com/Maingochoanglong/LTWordTool/releases/latest) — không cần cài Python.
 
 ### Cách 2 — Chạy từ mã nguồn
 
 ```bash
-git clone https://github.com/<tên-user>/LTWordTool.git
+git clone https://github.com/Maingochoanglong/LTWordTool.git
 cd LTWordTool
 pip install -r requirements.txt
 python gui.py
@@ -96,8 +96,8 @@ Muốn dùng theo hướng khác (thương mại, nhúng vào sản phẩm, phâ
 
 Gặp lỗi, muốn góp ý, hoặc có câu hỏi khi sử dụng?
 
-1. **Kiểm tra trước** trong [Issues đã có](https://github.com/<tên-user>/LTWordTool/issues?q=is%3Aissue) — có thể lỗi đã được báo cáo hoặc trả lời rồi.
-2. Chưa thấy → **tạo [Issue mới](https://github.com/<tên-user>/LTWordTool/issues/new)**, mô tả rõ: đang làm gì, mong đợi gì, thực tế xảy ra gì (kèm file `.docx` mẫu nếu tiện, đã xoá nội dung nhạy cảm).
+1. **Kiểm tra trước** trong [Issues đã có](https://github.com/Maingochoanglong/LTWordTool/issues?q=is%3Aissue) — có thể lỗi đã được báo cáo hoặc trả lời rồi.
+2. Chưa thấy → **tạo [Issue mới](https://github.com/Maingochoanglong/LTWordTool/issues/new)**, mô tả rõ: đang làm gì, mong đợi gì, thực tế xảy ra gì (kèm file `.docx` mẫu nếu tiện, đã xoá nội dung nhạy cảm).
 
 Vui lòng dùng Issue thay vì nhắn tin riêng — giúp người dùng khác gặp vấn đề tương tự cũng tìm thấy câu trả lời, và không phụ thuộc vào 1 kênh liên hệ duy nhất.
 
