@@ -1,3 +1,4 @@
+# LTWordTool, AGPL-3.0 license
 """
 gui.py
 ======
@@ -315,12 +316,6 @@ class CombinedPanel(RunPanel):
         return None
  
     def collect_call(self) -> tuple[Callable[..., CombinedReport], tuple[object, ...]] | None:
-        """Kiểm tra input hiện tại: phải có file gốc, tích ít nhất 1 thao
-        tác, và nếu tích "Thay thế nội dung" thì pair_list phải có ít
-        nhất 1 cặp -- thiếu gì thì cảnh báo qua self._warn() rồi trả None
-        (đúng hợp đồng RunPanel.collect_call()). Nếu chưa chọn file kết
-        quả, tự đặt tên cạnh file gốc. Trả về (run_combined, args) để
-        RunPanel chạy nền."""
         source = self.row_source.path()
         do_replace = self.chk_replace.isChecked()
         do_mathtype = self.chk_mathtype.isChecked()

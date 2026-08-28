@@ -1,3 +1,4 @@
+# LTWordTool, AGPL-3.0 license
 """
 fix_mathtype_parens.py
 =======================
@@ -81,7 +82,7 @@ def process_one_equation(bin_path: Path) -> tuple[bytes | None, int, str | None]
         root_clsid_str = ole.root.clsid
     except Exception as e:
         return None, 0, (
-            "không đọc được dữ liệu bên trong công thức này\n"
+            "không đọc được cấu trúc OLE bên trong công thức này\n"
             f"      chi tiết: {e}"
         )
 
@@ -93,7 +94,7 @@ def process_one_equation(bin_path: Path) -> tuple[bytes | None, int, str | None]
         return None, 0, str(e)
     except Exception as e:
         return None, 0, (
-            "không đọc đúng công thức này, giữ nguyên để an toàn\n"
+            "không đọc đúng cấu trúc công thức, giữ nguyên để an toàn\n"
             f"      chi tiết: {e}"
         )
 
@@ -197,32 +198,32 @@ def fix_mathtype_parens_in_docx(
 
     work = Path(tempfile.mkdtemp(prefix="fix_mathtype_"))
     try:
-        log("Đang mở file .docx")
+        log("Đang giải nén file .docx...")
         with zipfile.ZipFile(in_path) as z:
             z.extractall(work)
 
         embeddings_dir = work / "word" / "embeddings"
         bin_files = sorted(embeddings_dir.glob("oleObject*.bin")) if embeddings_dir.exists() else []
-        log(f"Tìm thấy {len(bin_files)} công thức MathType trong file.")
+        log(f"Tìm thấy {len(bin_files)} công thức MathType (oleObject*.bin).")
 
         fixed: list[tuple[str, int]] = []
         unchanged: list[str] = []
         skipped: list[tuple[str, str]] = []
         for i, bin_path in enumerate(bin_files, start=1):
-            log(f"[{i}/{len(bin_files)}] Đang xử lý công thức {bin_path.name}")
+            log(f"[{i}/{len(bin_files)}] Đang xử lý {bin_path.name}...")
             new_bytes, n_repl, error = process_one_equation(bin_path)
             if error:
-                log(f"    -> [BỎ QUA] {error}")
+                log(f"    -> Bỏ qua: {error}")
                 skipped.append((bin_path.name, error))
             elif new_bytes is None:
-                log("    -> [OK] Không có ngoặc cần sửa.")
+                log("    -> Không có ngoặc cần sửa.")
                 unchanged.append(bin_path.name)
             else:
                 bin_path.write_bytes(new_bytes)
-                log(f"    -> [OK] Đã sửa {n_repl} cặp ngoặc.")
+                log(f"    -> Đã sửa {n_repl} cặp ngoặc.")
                 fixed.append((bin_path.name, n_repl))
 
-        log("Đang lưu file kết quả")
+        log("Đang nén file kết quả...")
         if out_path.exists():
             out_path.unlink()
         with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:

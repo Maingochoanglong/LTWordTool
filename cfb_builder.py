@@ -1,3 +1,4 @@
+# LTWordTool, AGPL-3.0 license
 """
 cfb_builder.py
 ==============

@@ -1,3 +1,4 @@
+# LTWordTool, AGPL-3.0 license
 """
 mtef_parser.py
 ==============
@@ -341,12 +342,11 @@ class Parser:
         )
 
     def parse_template_body(self, rec: Rec, p: int) -> int:
-        """Các subobject của 1 TMPL (dù class đó có bao nhiêu slot/ký tự)
-        đều nằm chung trong ĐÚNG 1 danh sách object phẳng duy nhất, kết
-        thúc bằng 1 END duy nhất -- giống hệt nội dung LINE/PILE/1 ô
-        MATRIX. Đã xác nhận bằng thực nghiệm: 1 phân số 2 slot có dạng
-        [COLOR, LINE, COLOR, LINE, END], chỉ 1 END ở cuối cùng, không
-        phải 1 END/slot."""
+        """A TMPL's subobjects (however many slots/characters its class has) are
+        ALL just ONE flat object list, terminated by a single END -- exactly
+        like LINE/PILE/MATRIX-cell content. Confirmed empirically: a 2-slot
+        fraction is [COLOR, LINE, COLOR, LINE, END], one trailing END total,
+        not one per slot."""
         items, p = self.parse_list(p)
         rec.children.append(("subobjects", items))
         return p
@@ -386,9 +386,9 @@ def parse_header(data: bytes) -> tuple[MTEFHeader, int]:
 
 
 def parse_mtef(mtef_bytes: bytes) -> tuple[MTEFHeader, list[Rec], int, Parser]:
-    """Cấp cao nhất = 0 hoặc nhiều bản ghi def/pref, sau đó đúng 1 bản ghi
-    PILE hoặc LINE (tự nó đã đầy đủ, gồm cả nội dung + END riêng). Không
-    có ký tự kết thúc nào khác ngoài chính bản ghi cuối cùng đó.
+    """Top level = zero or more def/pref records, then exactly one PILE or LINE
+    record (which is fully self-contained, including its own content + END).
+    There is no additional outer terminator beyond that final record.
     Chỉ hỗ trợ MTEF v5 (dùng bởi MathType 4.0 trở lên -- toàn bộ dòng
     MathType 4/5/6.x/7.x/365 hiện có). MTEF v3 (Equation Editor 3.x) và v4
     (MathType 3.5 riêng) có cấu trúc khác hẳn nên bị chặn ở đây, báo lỗi rõ
